@@ -39,7 +39,7 @@ class CampaignController extends Controller
     {
         Campaign::create($request->campaignData());
 
-        return redirect()->route('admin.campaigns.index')->with('success', 'Campaign created.');
+        return redirect()->route('admin.campaigns.index')->with('success', __('messages.lg_success_campaign_created'));
     }
 
     public function edit(Campaign $campaign): View
@@ -51,13 +51,13 @@ class CampaignController extends Controller
     {
         $campaign->update($request->campaignData());
 
-        return redirect()->route('admin.campaigns.index')->with('success', 'Campaign updated.');
+        return redirect()->route('admin.campaigns.index')->with('success', __('messages.lg_success_campaign_updated'));
     }
 
     public function destroy(Campaign $campaign): RedirectResponse
     {
         $campaign->delete();
 
-        return back()->with('success', 'Campaign deleted.');
+        return back()->with('success', __('messages.lg_success_campaign_deleted'));
     }
 }

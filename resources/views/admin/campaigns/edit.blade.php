@@ -1,9 +1,9 @@
 @extends('admin.layouts.app')
-@section('title', 'Edit Campaign')
+@section('title', __('messages.lg_edit_campaign'))
 
 @section('content')
     <div class="page-header">
-        <h1 class="page-title">Edit Campaign</h1>
+        <h1 class="page-title">{{ __('messages.lg_edit_campaign') }}</h1>
         <p class="page-sub">{{ $campaign->name }}</p>
     </div>
     <div class="panel-card">

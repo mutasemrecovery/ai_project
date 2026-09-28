@@ -6,7 +6,7 @@
 
     <div class="sidebar-brand">
         <div class="brand-icon"><i class="bi bi-bullseye"></i></div>
-        <span class="brand-text">Recovery</span>
+        <span class="brand-text">AH Group</span>
     </div>
 
     <nav class="sidebar-nav">
@@ -21,14 +21,14 @@
             </li>
         </ul>
 
-        <div class="nav-label">Lead Generation</div>
+        <div class="nav-label">{{ __('messages.lg_section') }}</div>
         <ul>
             @can('lead-table')
             <li class="nav-item">
                 <a href="{{ route('admin.leads.index') }}"
                    class="nav-link {{ request()->routeIs('admin.leads.*') ? 'active' : '' }}">
                     <i class="nav-icon bi bi-bullseye"></i>
-                    <span>Leads</span>
+                    <span>{{ __('messages.lg_leads') }}</span>
                 </a>
             </li>
             @endcan
@@ -37,7 +37,7 @@
                 <a href="{{ route('admin.campaigns.index') }}"
                    class="nav-link {{ request()->routeIs('admin.campaigns.*') ? 'active' : '' }}">
                     <i class="nav-icon bi bi-megaphone"></i>
-                    <span>Campaigns</span>
+                    <span>{{ __('messages.lg_campaigns') }}</span>
                 </a>
             </li>
             @endcan
@@ -46,20 +46,20 @@
                 <a href="{{ route('admin.outreaches.index') }}"
                    class="nav-link {{ request()->routeIs('admin.outreaches.*') ? 'active' : '' }}">
                     <i class="nav-icon bi bi-send-check"></i>
-                    <span>Outreach</span>
+                    <span>{{ __('messages.lg_outreach') }}</span>
                 </a>
             </li>
             @endcan
         </ul>
 
-        <div class="nav-label">Administration</div>
+        <div class="nav-label">{{ __('messages.lg_administration') }}</div>
         <ul>
             @can('employee-table')
             <li class="nav-item">
                 <a href="{{ route('admin.employee.index') }}"
                    class="nav-link {{ request()->routeIs('admin.employee.*') ? 'active' : '' }}">
                     <i class="nav-icon bi bi-person-badge"></i>
-                    <span>Employees</span>
+                    <span>{{ __('messages.employees') }}</span>
                 </a>
             </li>
             @endcan
@@ -68,7 +68,7 @@
                 <a href="{{ route('admin.role.index') }}"
                    class="nav-link {{ request()->routeIs('admin.role.*') ? 'active' : '' }}">
                     <i class="nav-icon bi bi-shield-lock"></i>
-                    <span>Roles</span>
+                    <span>{{ __('messages.Roles') }}</span>
                 </a>
             </li>
             @endcan

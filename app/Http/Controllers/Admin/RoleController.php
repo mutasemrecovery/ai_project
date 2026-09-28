@@ -23,28 +23,6 @@ class RoleController extends Controller
         return [
             'الأدوار والموظفون'    => ['role-table', 'role-add', 'role-edit', 'role-delete', 'employee-table', 'employee-add', 'employee-edit', 'employee-delete'],
             'Lead Generation' => ['lead-table', 'lead-add', 'lead-edit', 'lead-delete', 'campaign-table', 'campaign-add', 'campaign-edit', 'campaign-delete', 'outreach-table', 'outreach-approve'],
-            'سجل النشاطات'         => ['activity-log-table', 'activity-log-delete'],
-            'الطلاب'               => ['student-table', 'student-add', 'student-edit', 'student-delete'],
-            'المعلمون'             => ['teacher-table', 'teacher-add', 'teacher-edit', 'teacher-delete'],
-            'الدورات'              => ['course-table', 'course-add', 'course-edit', 'course-delete'],
-            'محتوى الدورات'        => ['course-content-add', 'course-content-edit', 'course-content-delete'],
-            'الفئات'               => ['category-table', 'category-add', 'category-edit', 'category-delete'],
-            'المواد الدراسية'      => ['subject-table', 'subject-add', 'subject-edit', 'subject-delete'],
-            'الاختبارات'           => ['exam-table', 'exam-add', 'exam-edit', 'exam-delete'],
-            'بنك الأسئلة'          => ['question-bank-table', 'question-bank-add', 'question-bank-edit', 'question-bank-delete'],
-            'امتحانات سابقة'       => ['previous-exam-table', 'previous-exam-add', 'previous-exam-edit', 'previous-exam-delete'],
-            'أوراق العمل'          => ['worksheet-table', 'worksheet-add', 'worksheet-edit', 'worksheet-delete'],
-            'المفكرة التعليمية'    => ['educational-note-table', 'educational-note-add', 'educational-note-edit', 'educational-note-delete'],
-            'المفكرة الأسبوعية'    => ['weekly-planner-table', 'weekly-planner-add', 'weekly-planner-edit', 'weekly-planner-delete'],
-            'التسجيلات'            => ['enrollment-table', 'enrollment-edit', 'enrollment-delete'],
-            'البطاقات'             => ['card-table', 'card-add', 'card-edit', 'card-delete', 'card-number-table', 'card-number-add', 'card-number-edit', 'card-number-delete'],
-            'البانرات'             => ['banner-table', 'banner-add', 'banner-edit', 'banner-delete'],
-            'الإعلانات'            => ['announcement-table', 'announcement-add', 'announcement-edit', 'announcement-delete'],
-            'الإشعارات'            => ['notification-send'],
-            'المدن'                => ['city-table', 'city-add', 'city-edit', 'city-delete'],
-            'نقاط البيع'           => ['pos-table', 'pos-add', 'pos-edit', 'pos-delete'],
-            'رسائل التواصل'        => ['contact-message-table', 'contact-message-delete'],
-            'الإعدادات'            => ['setting-edit'],
         ];
     }
 

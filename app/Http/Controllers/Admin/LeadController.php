@@ -63,7 +63,7 @@ class LeadController extends Controller
         $rawLead = $intake->storeRawLead($request->rawLeadData($source->id));
         $lead = $intake->promoteRawLead($rawLead);
 
-        return redirect()->route('admin.leads.show', $lead)->with('success', 'Lead saved successfully.');
+        return redirect()->route('admin.leads.show', $lead)->with('success', __('messages.lg_success_lead_saved'));
     }
 
     public function show(Lead $lead): View
@@ -91,14 +91,14 @@ class LeadController extends Controller
             'do_not_contact' => $request->boolean('do_not_contact'),
         ]);
 
-        return back()->with('success', 'Lead status updated.');
+        return back()->with('success', __('messages.lg_success_lead_status_updated'));
     }
 
     public function analyze(Lead $lead): RedirectResponse
     {
         AnalyzeLeadJob::dispatch($lead->id);
 
-        return back()->with('success', 'Lead analysis queued.');
+        return back()->with('success', __('messages.lg_success_lead_analysis_queued'));
     }
 
     public function generateOutreach(Request $request, Lead $lead): RedirectResponse
@@ -106,20 +106,20 @@ class LeadController extends Controller
         $type = $request->input('message_type', 'professional_email');
         GenerateOutreachJob::dispatch($lead->id, $type);
 
-        return back()->with('success', 'Outreach generation queued.');
+        return back()->with('success', __('messages.lg_success_outreach_generation_queued'));
     }
 
     public function approve(Lead $lead): RedirectResponse
     {
         $lead->update(['status' => Lead::STATUS_APPROVED]);
 
-        return back()->with('success', 'Lead approved.');
+        return back()->with('success', __('messages.lg_success_lead_approved'));
     }
 
     public function ignore(Lead $lead): RedirectResponse
     {
         $lead->update(['status' => Lead::STATUS_IGNORED]);
 
-        return back()->with('success', 'Lead ignored.');
+        return back()->with('success', __('messages.lg_success_lead_ignored'));
     }
 }

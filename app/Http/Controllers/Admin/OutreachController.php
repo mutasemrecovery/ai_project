@@ -41,7 +41,7 @@ class OutreachController extends Controller
     {
         $outreach->update($request->only(['subject', 'body']));
 
-        return back()->with('success', 'Outreach updated.');
+        return back()->with('success', __('messages.lg_success_outreach_updated'));
     }
 
     public function approve(OutreachReviewRequest $request, Outreach $outreach): RedirectResponse
@@ -57,7 +57,7 @@ class OutreachController extends Controller
             SendApprovedOutreachJob::dispatch($outreach->id);
         }
 
-        return redirect()->route('admin.outreaches.index')->with('success', 'Outreach approved.');
+        return redirect()->route('admin.outreaches.index')->with('success', __('messages.lg_success_outreach_approved'));
     }
 
     public function reject(Outreach $outreach): RedirectResponse
@@ -67,13 +67,13 @@ class OutreachController extends Controller
             'rejected_at' => now(),
         ]);
 
-        return back()->with('success', 'Outreach rejected.');
+        return back()->with('success', __('messages.lg_success_outreach_rejected'));
     }
 
     public function send(Outreach $outreach): RedirectResponse
     {
         SendApprovedOutreachJob::dispatch($outreach->id);
 
-        return back()->with('success', 'Approved outreach send queued.');
+        return back()->with('success', __('messages.lg_success_outreach_send_queued'));
     }
 }
