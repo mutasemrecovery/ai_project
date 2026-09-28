@@ -40,10 +40,10 @@ class OpenAiClient implements AiClientInterface
             'max_output_tokens' => $request->maxTokens ?: (int) config('ai.providers.openai.max_tokens'),
         ];
 
-        $temperature = $request->temperature ?? (float) config('ai.providers.openai.temperature');
+        $temperature = $request->temperature ?? config('ai.providers.openai.temperature');
 
-        if ($temperature >= 0) {
-            $payload['temperature'] = $temperature;
+        if (is_numeric($temperature) && (float) $temperature >= 0) {
+            $payload['temperature'] = (float) $temperature;
         }
 
         if ($request->schema) {
