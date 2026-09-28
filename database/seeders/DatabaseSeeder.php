@@ -11,11 +11,6 @@ class DatabaseSeeder extends Seeder
         $seeders = [
             PermissionSeeder::class,
             LeadGenerationSeeder::class,
-            SiteSettingSeeder::class,
-            HeroSectionSeeder::class,
-            AgencySeeder::class,
-            AboutSectionSeeder::class,
-            ClientSeeder::class,
         ];
 
         foreach ($seeders as $seeder) {
