@@ -11,7 +11,13 @@ class LeadSourceRepository
     {
         return LeadSource::query()
             ->where('enabled', true)
-            ->when($type, fn ($query, string $sourceType) => $query->where('type', $sourceType))
+            ->when($type, function ($query, string $source) {
+                $query->where(function ($query) use ($source) {
+                    $query->where('type', $source)
+                        ->orWhere('provider', $source)
+                        ->orWhere('name', $source);
+                });
+            })
             ->orderBy('name')
             ->limit($limit)
             ->get();

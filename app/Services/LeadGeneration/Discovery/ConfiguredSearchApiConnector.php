@@ -16,7 +16,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
     public function discover(LeadSource $source, Campaign $campaign, array $options = []): iterable
     {
-        $config = $source->configuration ?: [];
+        $config = $this->sourceConfig($source);
         $endpoint = $config['endpoint'] ?? null;
 
         if (! $endpoint) {
@@ -31,14 +31,14 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             ]),
         ]);
 
-        $queries = $options['queries'] ?? $this->queries->buildForCampaign($campaign);
+        $queries = $options['queries'] ?? $this->queries->buildForCampaign($campaign, $config);
         $limit = (int) ($options['limit'] ?? $config['limit'] ?? 25);
         $items = [];
 
         foreach (array_slice($queries, 0, max(1, $limit)) as $query) {
             try {
                 $response = $client->request($config['method'] ?? 'GET', $endpoint, [
-                    'query' => array_merge($config['query'] ?? [], [
+                    'query' => array_merge($this->queryParameters($config), [
                         $config['query_parameter'] ?? 'q' => $query,
                     ]),
                     'headers' => $this->authorizationHeaders($config),
@@ -65,9 +65,27 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         return $items;
     }
 
+    private function sourceConfig(LeadSource $source): array
+    {
+        $global = config('lead_generation.search', []);
+        $sourceConfig = $source->configuration ?: [];
+        $config = array_replace_recursive($global, $sourceConfig);
+
+        foreach (['endpoint', 'api_key', 'api_key_header', 'api_key_query_parameter', 'query_parameter', 'results_path'] as $key) {
+            if (($sourceConfig[$key] ?? null) === null || ($sourceConfig[$key] ?? null) === '') {
+                $config[$key] = $global[$key] ?? $config[$key] ?? null;
+            }
+        }
+
+        $config['query'] = array_merge($global['query'] ?? [], $sourceConfig['query'] ?? []);
+        $config['headers'] = array_merge($global['headers'] ?? [], $sourceConfig['headers'] ?? []);
+
+        return $config;
+    }
+
     private function authorizationHeaders(array $config): array
     {
-        $headers = $config['headers'] ?? [];
+        $headers = $this->stringMap($config['headers'] ?? []);
 
         if (! empty($config['api_key']) && ! empty($config['api_key_header'])) {
             $headers[$config['api_key_header']] = $config['api_key'];
@@ -76,34 +94,106 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         return $headers;
     }
 
+    private function queryParameters(array $config): array
+    {
+        $query = $this->stringMap($config['query'] ?? []);
+
+        if (! empty($config['api_key']) && ! empty($config['api_key_query_parameter'])) {
+            $query[$config['api_key_query_parameter']] = $config['api_key'];
+        }
+
+        return $query;
+    }
+
     private function results(array $decoded, array $config): array
     {
-        $path = $config['results_path'] ?? null;
-        $results = $path ? Arr::get($decoded, $path, []) : $decoded;
+        $paths = array_values(array_unique(array_filter(array_merge(
+            [$config['results_path'] ?? null],
+            $config['results_paths'] ?? []
+        ))));
 
-        return is_array($results) ? $results : [];
+        foreach ($paths as $path) {
+            $results = Arr::get($decoded, $path, []);
+
+            if (is_array($results) && $this->isList($results)) {
+                return $results;
+            }
+        }
+
+        return $this->isList($decoded) ? $decoded : [];
     }
 
     private function mapItem(array $item, LeadSource $source, string $query, array $config): array
     {
         $map = $config['field_map'] ?? [];
+        $sourceUrl = $this->value($item, $map['source_url'] ?? ['url', 'link']);
+        $description = $this->value($item, $map['description'] ?? ['description', 'snippet', 'content']);
+        $companyName = $this->cleanCompanyName(
+            $this->value($item, $map['company_name'] ?? ['company_name', 'name', 'title']),
+            $config
+        );
 
         return [
             'source' => $source->name,
-            'source_url' => $this->value($item, $map['source_url'] ?? 'url'),
-            'company_name' => $this->value($item, $map['company_name'] ?? 'name'),
-            'website' => $this->value($item, $map['website'] ?? 'website'),
-            'email' => $this->value($item, $map['email'] ?? 'email'),
-            'phone' => $this->value($item, $map['phone'] ?? 'phone'),
-            'location' => $this->value($item, $map['location'] ?? 'location'),
-            'raw_data' => array_merge($item, ['query' => $query]),
+            'source_url' => $sourceUrl,
+            'company_name' => $companyName,
+            'website' => $this->value($item, $map['website'] ?? ['website', 'company_website', 'official_website']),
+            'email' => $this->value($item, $map['email'] ?? ['email']),
+            'phone' => $this->value($item, $map['phone'] ?? ['phone', 'telephone']),
+            'location' => $this->value($item, $map['location'] ?? ['location', 'address']),
+            'raw_data' => array_filter(array_merge($item, [
+                'query' => $query,
+                'description' => $description,
+                'source_reference' => $config['source_reference'] ?? $source->provider ?? $source->name,
+                'platform' => $config['platform'] ?? $source->provider,
+                'public_profile_url' => $sourceUrl,
+            ]), fn ($value) => $value !== null && $value !== ''),
         ];
     }
 
-    private function value(array $item, string $path): ?string
+    private function value(array $item, string|array|null $paths): ?string
     {
-        $value = Arr::get($item, $path);
+        foreach ((array) $paths as $path) {
+            if (! is_string($path) || $path === '') {
+                continue;
+            }
 
-        return is_scalar($value) ? (string) $value : null;
+            $value = Arr::get($item, $path);
+
+            if (is_scalar($value)) {
+                $value = trim((string) $value);
+
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function cleanCompanyName(?string $value, array $config): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        foreach ($config['company_name_suffixes'] ?? [] as $suffix) {
+            if (is_string($suffix) && str_ends_with($value, $suffix)) {
+                $value = substr($value, 0, -strlen($suffix));
+            }
+        }
+
+        return trim($value, " \t\n\r\0\x0B-|/");
+    }
+
+    private function stringMap(array $values): array
+    {
+        return array_filter($values, fn ($value) => $value !== null && $value !== '');
+    }
+
+    private function isList(array $items): bool
+    {
+        return $items === [] || array_keys($items) === range(0, count($items) - 1);
     }
 }

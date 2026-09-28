@@ -67,6 +67,33 @@ class LeadGenerationSeeder extends Seeder
             ]
         );
 
+        $this->socialSearchSource(
+            'LinkedIn Public Search',
+            'linkedin',
+            'Searches public LinkedIn company pages through your configured search API. Use only APIs and data access that your account is allowed to use.',
+            ['site:linkedin.com/company', 'site:linkedin.com/showcase'],
+            '-jobs -careers -login',
+            ['| LinkedIn', '- LinkedIn', ' LinkedIn']
+        );
+
+        $this->socialSearchSource(
+            'Facebook Public Search',
+            'facebook',
+            'Searches public Facebook business pages through your configured search API. Use only APIs and data access that your account is allowed to use.',
+            ['site:facebook.com'],
+            '-groups -posts -photos -videos -login',
+            ['| Facebook', '- Facebook', ' Facebook']
+        );
+
+        $this->socialSearchSource(
+            'X Twitter Public Search',
+            'twitter',
+            'Searches public X/Twitter profiles through your configured search API. Use only APIs and data access that your account is allowed to use.',
+            ['site:x.com', 'site:twitter.com'],
+            '-status -statuses -login',
+            ['| X', '- X', '/ X', '| Twitter', '- Twitter', '/ Twitter', ' Twitter']
+        );
+
         Campaign::firstOrCreate(
             ['name' => 'Jordan Restaurants'],
             [
@@ -103,6 +130,39 @@ class LeadGenerationSeeder extends Seeder
                 'system_prompt' => 'Analyze a public business lead for fit with software development services. Do not invent facts.',
                 'user_prompt' => 'Use the supplied lead JSON and return the required structured JSON.',
                 'enabled' => true,
+            ]
+        );
+    }
+
+    private function socialSearchSource(
+        string $name,
+        string $provider,
+        string $description,
+        array $siteFilters,
+        string $querySuffix,
+        array $companyNameSuffixes
+    ): void {
+        LeadSource::updateOrCreate(
+            ['name' => $name],
+            [
+                'type' => 'search_api',
+                'provider' => $provider,
+                'description' => $description,
+                'configuration' => [
+                    'platform' => $provider,
+                    'source_reference' => $provider,
+                    'site_filters' => $siteFilters,
+                    'query_suffix' => $querySuffix,
+                    'company_name_suffixes' => $companyNameSuffixes,
+                    'field_map' => [
+                        'source_url' => ['url', 'link'],
+                        'company_name' => ['company_name', 'name', 'title'],
+                        'description' => ['description', 'snippet', 'content'],
+                        'website' => ['website', 'company_website', 'official_website'],
+                        'location' => ['location', 'address'],
+                    ],
+                ],
+                'enabled' => (bool) config("lead_generation.sources.{$provider}.enabled", false),
             ]
         );
     }
