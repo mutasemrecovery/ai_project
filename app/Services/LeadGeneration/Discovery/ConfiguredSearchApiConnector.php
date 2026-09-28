@@ -82,7 +82,13 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             }
 
             foreach ($this->results($decoded, $config) as $item) {
-                $items[] = $this->mapItem($item, $source, $query, $config);
+                $mapped = $this->mapItem($item, $source, $query, $config);
+
+                if (! $this->allowedResult($mapped, $config)) {
+                    continue;
+                }
+
+                $items[] = $mapped;
 
                 if (count($items) >= $limit) {
                     return $items;
@@ -177,6 +183,35 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
                 'public_profile_url' => $sourceUrl,
             ]), fn ($value) => $value !== null && $value !== ''),
         ];
+    }
+
+    private function allowedResult(array $item, array $config): bool
+    {
+        $url = strtolower((string) ($item['source_url'] ?? ''));
+
+        if ($url === '') {
+            return false;
+        }
+
+        foreach ($config['blocked_url_contains'] ?? [] as $blocked) {
+            if (is_string($blocked) && $blocked !== '' && str_contains($url, strtolower($blocked))) {
+                return false;
+            }
+        }
+
+        $allowed = array_values(array_filter($config['allowed_url_contains'] ?? []));
+
+        if ($allowed === []) {
+            return true;
+        }
+
+        foreach ($allowed as $needle) {
+            if (is_string($needle) && $needle !== '' && str_contains($url, strtolower($needle))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function value(array $item, string|array|null $paths): ?string

@@ -73,7 +73,9 @@ class LeadGenerationSeeder extends Seeder
             'Searches public LinkedIn company pages through your configured search API. Use only APIs and data access that your account is allowed to use.',
             ['site:linkedin.com/company', 'site:linkedin.com/showcase'],
             '-jobs -careers -login',
-            ['| LinkedIn', '- LinkedIn', ' LinkedIn']
+            ['| LinkedIn', '- LinkedIn', ' LinkedIn'],
+            ['linkedin.com/company/', 'linkedin.com/showcase/'],
+            ['linkedin.com/jobs/', 'linkedin.com/posts/', 'linkedin.com/pulse/', 'linkedin.com/feed/']
         );
 
         $this->socialSearchSource(
@@ -82,7 +84,9 @@ class LeadGenerationSeeder extends Seeder
             'Searches public Facebook business pages through your configured search API. Use only APIs and data access that your account is allowed to use.',
             ['site:facebook.com'],
             '-groups -posts -photos -videos -login',
-            ['| Facebook', '- Facebook', ' Facebook']
+            ['| Facebook', '- Facebook', ' Facebook'],
+            ['facebook.com/'],
+            ['/groups/', '/posts/', '/photos/', '/videos/', '/events/', '/login', 'sharer.php']
         );
 
         $this->socialSearchSource(
@@ -91,7 +95,9 @@ class LeadGenerationSeeder extends Seeder
             'Searches public X/Twitter profiles through your configured search API. Use only APIs and data access that your account is allowed to use.',
             ['site:x.com', 'site:twitter.com'],
             '-status -statuses -login',
-            ['| X', '- X', '/ X', '| Twitter', '- Twitter', '/ Twitter', ' Twitter']
+            ['| X', '- X', '/ X', '| Twitter', '- Twitter', '/ Twitter', ' Twitter'],
+            ['x.com/', 'twitter.com/'],
+            ['/status/', '/statuses/', '/i/flow/login', '/search']
         );
 
         Campaign::firstOrCreate(
@@ -140,7 +146,9 @@ class LeadGenerationSeeder extends Seeder
         string $description,
         array $siteFilters,
         string $querySuffix,
-        array $companyNameSuffixes
+        array $companyNameSuffixes,
+        array $allowedUrlContains,
+        array $blockedUrlContains
     ): void {
         LeadSource::updateOrCreate(
             ['name' => $name],
@@ -154,6 +162,8 @@ class LeadGenerationSeeder extends Seeder
                     'site_filters' => $siteFilters,
                     'query_suffix' => $querySuffix,
                     'company_name_suffixes' => $companyNameSuffixes,
+                    'allowed_url_contains' => $allowedUrlContains,
+                    'blocked_url_contains' => $blockedUrlContains,
                     'field_map' => [
                         'source_url' => ['url', 'link'],
                         'company_name' => ['company_name', 'name', 'title'],

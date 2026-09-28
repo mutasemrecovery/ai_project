@@ -23,10 +23,11 @@ class DiscoverLeadsCommand extends Command
 
         if ($this->option('dry-run')) {
             $items = $discovery->discover($campaignId, $source, $limit, true);
-            $this->table(['company_name', 'website', 'source'], $items->map(fn ($item) => [
+            $this->table(['company_name', 'source_url', 'source', 'query'], $items->map(fn ($item) => [
                 $item['company_name'] ?? null,
-                $item['website'] ?? null,
+                $item['source_url'] ?? null,
                 $item['source'] ?? null,
+                $item['raw_data']['query'] ?? null,
             ]));
 
             if ($debug || $items->isEmpty()) {
