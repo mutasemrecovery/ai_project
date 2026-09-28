@@ -7,6 +7,7 @@ use App\Models\LeadSource;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 
 class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 {
@@ -43,13 +44,40 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
                     ]),
                     'headers' => $this->authorizationHeaders($config),
                 ]);
-            } catch (GuzzleException) {
+            } catch (GuzzleException $exception) {
+                Log::warning('Lead discovery search request failed.', [
+                    'source' => $source->name,
+                    'provider' => $source->provider,
+                    'endpoint' => $endpoint,
+                    'query' => $query,
+                    'message' => $exception->getMessage(),
+                ]);
+
                 continue;
             }
 
             $decoded = json_decode((string) $response->getBody(), true);
 
             if (! is_array($decoded)) {
+                Log::warning('Lead discovery search returned non-JSON response.', [
+                    'source' => $source->name,
+                    'provider' => $source->provider,
+                    'endpoint' => $endpoint,
+                    'query' => $query,
+                ]);
+
+                continue;
+            }
+
+            if (isset($decoded['error'])) {
+                Log::warning('Lead discovery search returned an API error.', [
+                    'source' => $source->name,
+                    'provider' => $source->provider,
+                    'endpoint' => $endpoint,
+                    'query' => $query,
+                    'error' => $decoded['error'],
+                ]);
+
                 continue;
             }
 
