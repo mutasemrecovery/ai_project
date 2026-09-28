@@ -63,8 +63,34 @@ class LeadIntakeService
             'source_reference' => Arr::get($rawData, 'source_reference'),
             'description' => Arr::get($rawData, 'description'),
             'company_size' => Arr::get($rawData, 'company_size'),
+            'business_signals' => $this->candidateSignals($rawData),
             'status' => Lead::STATUS_NEW,
             'priority' => Lead::PRIORITY_LOW,
         ]);
+    }
+
+    private function candidateSignals(array $rawData): array
+    {
+        $signals = [];
+
+        foreach ((array) Arr::get($rawData, 'candidate_quality_signals', []) as $signal) {
+            if (is_string($signal) && $signal !== '') {
+                $signals[] = [
+                    'signal' => $signal,
+                    'evidence' => Arr::get($rawData, 'description') ?: Arr::get($rawData, 'query'),
+                    'confidence' => 0.6,
+                ];
+            }
+        }
+
+        if (($score = Arr::get($rawData, 'candidate_quality_score')) !== null) {
+            $signals[] = [
+                'signal' => 'candidate_quality_score',
+                'evidence' => (string) $score,
+                'confidence' => min(1, ((float) $score) / 20),
+            ];
+        }
+
+        return $signals;
     }
 }

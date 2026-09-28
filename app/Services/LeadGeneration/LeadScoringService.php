@@ -34,15 +34,21 @@ class LeadScoringService
         $score = count($needs) > 0 ? 10 : 0;
         $text = $this->flatten($signals) . ' ' . implode(' ', $needs) . ' ' . ($analysis['reasoning'] ?? '');
 
-        foreach (['hiring', 'looking for', 'need', 'automation', 'mvp', 'booking', 'ordering', 'software'] as $keyword) {
+        foreach (['booking', 'appointment', 'ordering', 'order online', 'delivery', 'reservation', 'new branch', 'new project', 'registration open', 'crm', 'erp', 'automation', 'whatsapp', 'membership', 'inventory', 'fleet', 'tracking'] as $keyword) {
             if (str_contains(mb_strtolower($text), $keyword)) {
-                $score += 4;
+                $score += 5;
+            }
+        }
+
+        foreach (['hiring', 'jobs', 'career', 'salary', 'free course', 'training job', 'login'] as $keyword) {
+            if (str_contains(mb_strtolower($text), $keyword)) {
+                $score -= 6;
             }
         }
 
         $confidence = (float) ($analysis['confidence'] ?? 0);
 
-        return min(30, $score + (int) round($confidence * 6));
+        return max(0, min(30, $score + (int) round($confidence * 6)));
     }
 
     private function businessFitScore(Lead $lead, array $services, array $analysis): int
@@ -53,6 +59,10 @@ class LeadScoringService
         $score += min(8, count($services) * 2);
         $score += $lead->company_name ? 2 : 0;
         $score += $lead->website || $lead->phone || $lead->email ? 2 : 0;
+
+        if ($lead->campaign_id) {
+            $score += 4;
+        }
 
         return min(25, $score);
     }
@@ -69,8 +79,14 @@ class LeadScoringService
             default => 2,
         };
 
-        if (str_contains(mb_strtolower((string) $analysis['project_type']), 'custom')) {
+        $projectType = mb_strtolower((string) ($analysis['project_type'] ?? ''));
+
+        if (str_contains($projectType, 'custom')) {
             $score += 4;
+        }
+
+        if (str_contains($projectType, 'crm') || str_contains($projectType, 'erp') || str_contains($projectType, 'automation')) {
+            $score += 3;
         }
 
         return min(20, $score);
@@ -78,10 +94,10 @@ class LeadScoringService
 
     private function digitalGapScore(array $signals, Lead $lead): int
     {
-        $text = mb_strtolower($this->flatten($signals) . ' ' . $lead->detected_need);
+        $text = mb_strtolower($this->flatten($signals) . ' ' . $lead->detected_need . ' ' . $lead->description);
         $score = $lead->website ? 3 : 10;
 
-        foreach (['no website', 'outdated', 'broken', 'manual', 'whatsapp-only', 'no online', 'no mobile', 'weak digital'] as $keyword) {
+        foreach (['no website', 'outdated', 'broken', 'manual', 'whatsapp-only', 'whatsapp only', 'no online', 'no mobile', 'weak digital', 'dm to order', 'call to book'] as $keyword) {
             if (str_contains($text, $keyword)) {
                 $score += 4;
             }

@@ -24,8 +24,8 @@ class SearchQueryBuilderTest extends TestCase
         ]);
 
         $this->assertSame([
-            '(site:linkedin.com/company OR site:linkedin.com/showcase) Restaurant Amman Jordan Online Ordering -jobs -careers',
             '(site:linkedin.com/company OR site:linkedin.com/showcase) Restaurant Amman Jordan WhatsApp ordering -jobs -careers',
+            '(site:linkedin.com/company OR site:linkedin.com/showcase) Restaurant Amman Jordan Online Ordering -jobs -careers',
         ], $queries);
     }
 }

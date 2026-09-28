@@ -19,6 +19,7 @@ return [
         'query' => json_decode(env('LEADS_SEARCH_QUERY', '{}'), true) ?: [],
         'headers' => json_decode(env('LEADS_SEARCH_HEADERS', '{}'), true) ?: [],
         'max_queries_per_run' => (int) env('LEADS_SEARCH_MAX_QUERIES_PER_RUN', 3),
+        'min_quality_score' => (int) env('LEADS_SEARCH_MIN_QUALITY_SCORE', 7),
         'timeout' => (int) env('LEADS_SEARCH_TIMEOUT', 20),
         'user_agent' => env('LEADS_SEARCH_USER_AGENT'),
     ],

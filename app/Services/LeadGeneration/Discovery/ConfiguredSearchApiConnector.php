@@ -83,7 +83,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             }
 
             foreach ($this->results($decoded, $config) as $item) {
-                $mapped = $this->mapItem($item, $source, $query, $config);
+                $mapped = $this->mapItem($item, $source, $campaign, $query, $config);
 
                 if (! $this->allowedResult($mapped, $config)) {
                     continue;
@@ -158,7 +158,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         return $this->isList($decoded) ? $decoded : [];
     }
 
-    private function mapItem(array $item, LeadSource $source, string $query, array $config): array
+    private function mapItem(array $item, LeadSource $source, Campaign $campaign, string $query, array $config): array
     {
         $map = $config['field_map'] ?? [];
         $sourceUrl = $this->value($item, $map['source_url'] ?? ['url', 'link']);
@@ -167,6 +167,8 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             $this->value($item, $map['company_name'] ?? ['company_name', 'name', 'title']),
             $config
         );
+        $campaignContext = $this->campaignContext($campaign, $query);
+        $quality = $this->qualitySignals($companyName, $description, $sourceUrl, $query, $campaignContext);
 
         return [
             'source' => $source->name,
@@ -179,6 +181,12 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             'raw_data' => array_filter(array_merge($item, [
                 'query' => $query,
                 'description' => $description,
+                'country' => $campaignContext['country'],
+                'city' => $campaignContext['city'],
+                'industry' => $campaignContext['industry'],
+                'campaign' => $campaign->name,
+                'candidate_quality_score' => $quality['score'],
+                'candidate_quality_signals' => $quality['signals'],
                 'source_reference' => $config['source_reference'] ?? $source->provider ?? $source->name,
                 'platform' => $config['platform'] ?? $source->provider,
                 'public_profile_url' => $sourceUrl,
@@ -191,6 +199,10 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         $url = strtolower((string) ($item['source_url'] ?? ''));
 
         if ($url === '') {
+            return false;
+        }
+
+        if (empty($item['company_name']) || mb_strlen((string) $item['company_name']) < 2) {
             return false;
         }
 
@@ -208,11 +220,81 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
         foreach ($allowed as $needle) {
             if (is_string($needle) && $needle !== '' && str_contains($url, strtolower($needle))) {
-                return true;
+                return (int) ($item['raw_data']['candidate_quality_score'] ?? 0) >= (int) ($config['min_quality_score'] ?? 7);
             }
         }
 
         return false;
+    }
+
+    private function campaignContext(Campaign $campaign, string $query): array
+    {
+        $text = mb_strtolower($query);
+
+        return [
+            'country' => $this->firstMentioned($campaign->countries ?: [], $text),
+            'city' => $this->firstMentioned($campaign->cities ?: [], $text),
+            'industry' => $this->firstMentioned($campaign->industries ?: [], $text),
+        ];
+    }
+
+    private function firstMentioned(array $values, string $text): ?string
+    {
+        foreach ($values as $value) {
+            if (is_string($value) && $value !== '' && str_contains($text, mb_strtolower($value))) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function qualitySignals(?string $companyName, ?string $description, ?string $sourceUrl, string $query, array $campaignContext): array
+    {
+        $text = mb_strtolower(implode(' ', array_filter([$companyName, $description, $sourceUrl, $query])));
+        $score = 0;
+        $signals = [];
+
+        if ($companyName && mb_strlen($companyName) >= 3 && mb_strlen($companyName) <= 90) {
+            $score += 3;
+            $signals[] = 'clear_company_name';
+        }
+
+        if ($sourceUrl && preg_match('/\/(company|showcase|pages?|business|profile)\b|facebook\.com\/[^\/?#]+$|x\.com\/[^\/?#]+$|twitter\.com\/[^\/?#]+$/i', $sourceUrl)) {
+            $score += 3;
+            $signals[] = 'business_profile_url';
+        }
+
+        foreach (array_filter($campaignContext) as $value) {
+            if (str_contains($text, mb_strtolower($value))) {
+                $score += 1;
+            }
+        }
+
+        foreach (['book', 'booking', 'appointment', 'order online', 'delivery', 'new branch', 'new project', 'registration open', 'crm', 'erp', 'automation', 'whatsapp', 'membership', 'reservation', 'inventory', 'fleet', 'tracking'] as $keyword) {
+            if (str_contains($text, $keyword)) {
+                $score += 2;
+                $signals[] = 'intent:' . $keyword;
+            }
+        }
+
+        foreach (['official', 'business', 'services', 'solutions', 'clinic', 'restaurant', 'agency', 'company', 'center', 'store'] as $keyword) {
+            if (str_contains($text, $keyword)) {
+                $score += 1;
+            }
+        }
+
+        foreach (['job', 'jobs', 'career', 'careers', 'hiring', 'salary', 'course', 'training job', 'login', 'sign in', 'marketplace listing'] as $keyword) {
+            if (str_contains($text, $keyword)) {
+                $score -= 5;
+                $signals[] = 'negative:' . $keyword;
+            }
+        }
+
+        return [
+            'score' => max(0, min(20, $score)),
+            'signals' => array_values(array_unique($signals)),
+        ];
     }
 
     private function value(array $item, string|array|null $paths): ?string

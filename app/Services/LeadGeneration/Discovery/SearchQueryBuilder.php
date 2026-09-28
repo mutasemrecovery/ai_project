@@ -22,12 +22,12 @@ class SearchQueryBuilder
                     $location = trim(implode(' ', array_filter([$city, $country])));
                     $base = trim("{$industry} {$location}");
 
-                    foreach (array_slice($services, 0, 4) as $service) {
-                        $queries[] = $this->formatQuery(trim("{$base} {$service}"), $sourceConfig);
-                    }
-
                     foreach (array_slice($keywords, 0, 4) as $keyword) {
                         $queries[] = $this->formatQuery(trim("{$base} {$keyword}"), $sourceConfig);
+                    }
+
+                    foreach (array_slice($services, 0, 4) as $service) {
+                        $queries[] = $this->formatQuery(trim("{$base} {$service}"), $sourceConfig);
                     }
                 }
             }

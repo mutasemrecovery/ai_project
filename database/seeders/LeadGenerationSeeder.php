@@ -151,6 +151,7 @@ class LeadGenerationSeeder extends Seeder
                     'company_name_suffixes' => $companyNameSuffixes,
                     'allowed_url_contains' => $allowedUrlContains,
                     'blocked_url_contains' => $blockedUrlContains,
+                    'min_quality_score' => 7,
                     'field_map' => [
                         'source_url' => ['url', 'link'],
                         'company_name' => ['company_name', 'name', 'title'],

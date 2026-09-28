@@ -28,7 +28,8 @@ class LeadAnalysisService
 
         $analysis = $response->data;
         $scores = $this->scoring->score($lead, $analysis);
-        $status = $analysis['is_potential_client'] && $scores['lead_score'] >= 40
+        $minimumScore = (int) ($lead->campaign?->minimum_score ?? 55);
+        $status = $analysis['is_potential_client'] && $scores['lead_score'] >= $minimumScore
             ? Lead::STATUS_QUALIFIED
             : Lead::STATUS_IGNORED;
 
@@ -62,6 +63,8 @@ class LeadAnalysisService
             'source' => $lead->source,
             'source_url' => $lead->source_url,
             'source_reference' => $lead->source_reference,
+            'campaign' => $lead->campaign?->name,
+            'campaign_minimum_score' => $lead->campaign?->minimum_score,
             'target_services' => [
                 'Laravel development',
                 'PHP development',
@@ -79,6 +82,7 @@ class LeadAnalysisService
                 'E-commerce systems',
                 'Custom business software',
             ],
+            'pre_ai_business_signals' => $lead->business_signals ?: [],
         ], JSON_PRETTY_PRINT);
     }
 
