@@ -7,13 +7,20 @@ use Illuminate\Console\Command;
 
 class ProcessLeadsCommand extends Command
 {
-    protected $signature = 'leads:process {--limit=50} {--dry-run}';
+    protected $signature = 'leads:process {--limit=50} {--dry-run} {--sync}';
     protected $description = 'Process raw leads into normalized leads.';
 
     public function handle(): int
     {
         if ($this->option('dry-run')) {
             $this->info('Dry run: no raw leads were processed.');
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('sync') || env('LEADS_PROCESSING_RUN_INLINE', false)) {
+            app()->call([new ProcessRawLeadJob(null, (int) $this->option('limit')), 'handle']);
+            $this->info('Raw lead processing completed.');
 
             return self::SUCCESS;
         }

@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 
 class GenerateOutreachCommand extends Command
 {
-    protected $signature = 'leads:generate-outreach {--limit=25} {--type=professional_email} {--dry-run}';
+    protected $signature = 'leads:generate-outreach {--limit=25} {--type=professional_email} {--dry-run} {--sync}';
     protected $description = 'Generate pending-approval outreach for qualified leads.';
 
     public function handle(): int
@@ -21,6 +21,16 @@ class GenerateOutreachCommand extends Command
 
         if ($this->option('dry-run')) {
             $this->table(['id', 'company'], $leads->map(fn (Lead $lead) => [$lead->id, $lead->company_name]));
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('sync') || env('LEADS_OUTREACH_RUN_INLINE', false)) {
+            foreach ($leads as $lead) {
+                app()->call([new GenerateOutreachJob($lead->id, (string) $this->option('type')), 'handle']);
+            }
+
+            $this->info("Generated {$leads->count()} outreach drafts.");
 
             return self::SUCCESS;
         }

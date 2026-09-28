@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 
 class AnalyzeLeadsCommand extends Command
 {
-    protected $signature = 'leads:analyze {--limit=25} {--dry-run}';
+    protected $signature = 'leads:analyze {--limit=25} {--dry-run} {--sync}';
     protected $description = 'Queue AI analysis for unanalyzed leads.';
 
     public function handle(): int
@@ -19,6 +19,16 @@ class AnalyzeLeadsCommand extends Command
 
         if ($this->option('dry-run')) {
             $this->table(['id', 'company'], $leads->map(fn (Lead $lead) => [$lead->id, $lead->company_name]));
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('sync') || env('LEADS_ANALYSIS_RUN_INLINE', false)) {
+            foreach ($leads as $lead) {
+                app()->call([new AnalyzeLeadJob($lead->id), 'handle']);
+            }
+
+            $this->info("Analyzed {$leads->count()} leads.");
 
             return self::SUCCESS;
         }

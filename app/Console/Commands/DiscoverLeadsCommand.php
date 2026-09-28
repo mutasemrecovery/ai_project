@@ -11,7 +11,7 @@ use Illuminate\Console\Command;
 
 class DiscoverLeadsCommand extends Command
 {
-    protected $signature = 'leads:discover {--campaign=} {--limit=50} {--source=} {--dry-run} {--debug}';
+    protected $signature = 'leads:discover {--campaign=} {--limit=50} {--source=} {--dry-run} {--debug} {--sync}';
     protected $description = 'Discover raw leads from enabled lead sources and campaigns.';
 
     public function handle(LeadDiscoveryService $discovery, SearchQueryBuilder $queryBuilder): int
@@ -33,6 +33,13 @@ class DiscoverLeadsCommand extends Command
             if ($debug || $items->isEmpty()) {
                 $this->diagnostics($campaignId, $source, $queryBuilder);
             }
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('sync') || env('LEADS_DISCOVERY_RUN_INLINE', false)) {
+            $items = $discovery->discover($campaignId, $source, $limit);
+            $this->info("Discovered {$items->count()} raw leads.");
 
             return self::SUCCESS;
         }

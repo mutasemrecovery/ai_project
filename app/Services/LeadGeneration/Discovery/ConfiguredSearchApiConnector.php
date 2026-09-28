@@ -34,9 +34,10 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
         $queries = $options['queries'] ?? $this->queries->buildForCampaign($campaign, $config);
         $limit = (int) ($options['limit'] ?? $config['limit'] ?? 25);
+        $maxQueries = max(1, (int) ($config['max_queries_per_run'] ?? $limit));
         $items = [];
 
-        foreach (array_slice($queries, 0, max(1, $limit)) as $query) {
+        foreach (array_slice($queries, 0, $maxQueries) as $query) {
             try {
                 $response = $client->request($config['method'] ?? 'GET', $endpoint, [
                     'query' => array_merge($this->queryParameters($config), [
