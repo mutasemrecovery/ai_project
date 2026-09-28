@@ -1,0 +1,63 @@
+@extends('admin.layouts.app')
+@section('title', 'Campaigns')
+
+@section('content')
+<div class="page-header d-flex align-items-start justify-content-between flex-wrap gap-3">
+    <div>
+        <h1 class="page-title">Campaigns</h1>
+        <p class="page-sub">Target markets, services, keywords, and score thresholds.</p>
+    </div>
+    @can('campaign-add')
+    <a href="{{ route('admin.campaigns.create') }}" class="btn-primary-sm"><i class="bi bi-plus-circle"></i> New Campaign</a>
+    @endcan
+</div>
+
+@if(session('success'))
+    <div class="alert alert-success alert-dismissible fade show mb-3">{{ session('success') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+@endif
+
+<div class="panel-card mb-3">
+    <div class="panel-card-body">
+        <form method="GET" class="row g-2">
+            <div class="col-md-6"><input name="search" value="{{ request('search') }}" class="form-control form-control-sm" placeholder="Search campaigns"></div>
+            <div class="col-auto"><button class="btn-primary-sm"><i class="bi bi-search"></i></button></div>
+        </form>
+    </div>
+</div>
+
+<div class="panel-card">
+    <div class="panel-card-header d-flex align-items-center justify-content-between">
+        <h2 class="panel-card-title"><i class="bi bi-megaphone"></i> Campaign List</h2>
+        <span class="pill pill-info">{{ $campaigns->total() }} campaigns</span>
+    </div>
+    <div class="panel-card-body p-0">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>Name</th><th>Countries</th><th>Industries</th><th>Minimum Score</th><th>Enabled</th><th>Actions</th></tr></thead>
+                <tbody>
+                @forelse($campaigns as $campaign)
+                    <tr>
+                        <td class="fw-semibold">{{ $campaign->name }}</td>
+                        <td>{{ implode(', ', $campaign->countries ?: []) ?: '-' }}</td>
+                        <td>{{ implode(', ', $campaign->industries ?: []) ?: '-' }}</td>
+                        <td>{{ $campaign->minimum_score }}</td>
+                        <td><span class="pill pill-{{ $campaign->enabled ? 'success' : 'neutral' }}">{{ $campaign->enabled ? 'Yes' : 'No' }}</span></td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                @can('campaign-edit')<a href="{{ route('admin.campaigns.edit', $campaign) }}" class="btn-icon-sm btn-edit" title="Edit"><i class="bi bi-pencil"></i></a>@endcan
+                                @can('campaign-delete')
+                                <form method="POST" action="{{ route('admin.campaigns.destroy', $campaign) }}" onsubmit="return confirm('Delete this campaign?')">@csrf @method('DELETE')<button class="btn-icon-sm btn-delete"><i class="bi bi-trash"></i></button></form>
+                                @endcan
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="text-center text-muted py-4">No campaigns yet.</td></tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @if($campaigns->hasPages())<div class="panel-card-body border-top pt-3">{{ $campaigns->links() }}</div>@endif
+</div>
+@endsection
