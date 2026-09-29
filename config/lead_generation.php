@@ -16,9 +16,16 @@ return [
         'api_key' => env('LEADS_SEARCH_API_KEY'),
         'api_key_header' => env('LEADS_SEARCH_API_KEY_HEADER'),
         'api_key_query_parameter' => env('LEADS_SEARCH_API_KEY_QUERY_PARAMETER'),
-        'query' => json_decode(env('LEADS_SEARCH_QUERY', '{}'), true) ?: [],
+        'query' => array_merge(
+            ['num' => (int) env('LEADS_SEARCH_RESULTS_PER_SEARCH', 100)],
+            json_decode(env('LEADS_SEARCH_QUERY', '{}'), true) ?: []
+        ),
         'headers' => json_decode(env('LEADS_SEARCH_HEADERS', '{}'), true) ?: [],
-        'max_queries_per_run' => (int) env('LEADS_SEARCH_MAX_QUERIES_PER_RUN', 12),
+        'requests_per_run' => (int) env('LEADS_SEARCH_REQUESTS_PER_RUN', 1),
+        'max_queries_per_run' => (int) env('LEADS_SEARCH_MAX_QUERIES_PER_RUN', 1),
+        'monthly_limit' => (int) env('LEADS_SERPAPI_MONTHLY_LIMIT', 250),
+        'cache_ttl_days' => (int) env('LEADS_SEARCH_CACHE_TTL_DAYS', 30),
+        'dedupe_ttl_days' => (int) env('LEADS_SEARCH_DEDUPE_TTL_DAYS', 35),
         'min_quality_score' => (int) env('LEADS_SEARCH_MIN_QUALITY_SCORE', 10),
         'timeout' => (int) env('LEADS_SEARCH_TIMEOUT', 20),
         'user_agent' => env('LEADS_SEARCH_USER_AGENT'),

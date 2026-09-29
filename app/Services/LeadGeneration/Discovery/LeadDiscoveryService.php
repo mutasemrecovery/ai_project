@@ -23,10 +23,11 @@ class LeadDiscoveryService
     public function discover(?int $campaignId = null, ?string $sourceType = null, int $limit = 50, bool $dryRun = false): Collection
     {
         $created = collect();
+        $this->searchApiConnector->beginSearchRun((int) config('lead_generation.search.requests_per_run', 1));
 
         foreach ($this->campaigns->enabled($campaignId) as $campaign) {
             foreach ($this->sources->enabled($sourceType) as $source) {
-                foreach ($this->connectorFor($source)->discover($source, $campaign, ['limit' => $limit]) as $candidate) {
+                foreach ($this->connectorFor($source)->discover($source, $campaign, ['limit' => $limit, 'dry_run' => $dryRun]) as $candidate) {
                     $attributes = array_merge($candidate, [
                         'lead_source_id' => $source->id,
                         'campaign_id' => $campaign->id,

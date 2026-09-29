@@ -4,12 +4,15 @@ namespace App\Services\LeadGeneration;
 
 use App\Models\AiUsage;
 use App\Models\Lead;
+use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 
 class PipelineReportService
 {
     public function dashboardStats(): array
     {
+        $searchUsage = $this->searchUsage();
+
         return [
             'total_leads' => Lead::count(),
             'new_leads' => Lead::where('status', Lead::STATUS_NEW)->count(),
@@ -23,6 +26,24 @@ class PipelineReportService
             'estimated_pipeline_value' => Lead::whereNotIn('status', [Lead::STATUS_LOST, Lead::STATUS_IGNORED])->sum(DB::raw('lead_score * 100')),
             'ai_cost_today' => AiUsage::whereDate('created_at', now()->toDateString())->sum('estimated_cost'),
             'ai_cost_month' => AiUsage::whereYear('created_at', now()->year)->whereMonth('created_at', now()->month)->sum('estimated_cost'),
+            'serpapi_searches_month' => $searchUsage['used'] . '/' . $searchUsage['limit'],
+            'serpapi_searches_remaining' => max(0, $searchUsage['limit'] - $searchUsage['used']),
+        ];
+    }
+
+    private function searchUsage(): array
+    {
+        $limit = (int) config('lead_generation.search.monthly_limit', 250);
+        $setting = Setting::query()->where('key', 'lead_generation.search_usage')->first();
+        $usage = $setting && is_array($setting->value) ? $setting->value : [];
+
+        if (($usage['month'] ?? null) !== now()->format('Y-m')) {
+            return ['used' => 0, 'limit' => $limit];
+        }
+
+        return [
+            'used' => (int) ($usage['used'] ?? 0),
+            'limit' => (int) ($usage['limit'] ?? $limit),
         ];
     }
 

@@ -3,19 +3,29 @@
 namespace App\Services\LeadGeneration\Discovery;
 
 use App\Models\Campaign;
+use App\Models\Lead;
 use App\Models\LeadSource;
+use App\Models\RawLead;
+use App\Models\Setting;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 {
     private static array $quotaExhaustedEndpoints = [];
+    private ?int $remainingRunSearches = null;
 
     public function __construct(private SearchQueryBuilder $queries)
     {
+    }
+
+    public function beginSearchRun(?int $maxRequests = null): void
+    {
+        $this->remainingRunSearches = max(0, (int) ($maxRequests ?? config('lead_generation.search.requests_per_run', 1)));
     }
 
     public function discover(LeadSource $source, Campaign $campaign, array $options = []): iterable
@@ -42,37 +52,22 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         $queries = $options['queries'] ?? $this->queries->buildForCampaign($campaign, $config);
         $limit = (int) ($options['limit'] ?? $config['limit'] ?? 25);
         $maxQueries = max(1, (int) ($config['max_queries_per_run'] ?? $limit));
+        $dryRun = (bool) ($options['dry_run'] ?? false);
         $items = [];
+        $seenUrls = [];
 
         foreach (array_slice($queries, 0, $maxQueries) as $query) {
-            try {
-                $response = $client->request($config['method'] ?? 'GET', $endpoint, [
-                    'query' => array_merge($this->queryParameters($config), [
-                        $config['query_parameter'] ?? 'q' => $query,
-                    ]),
-                    'headers' => $this->authorizationHeaders($config),
-                ]);
-            } catch (GuzzleException $exception) {
-                Log::warning('Lead discovery search request failed.', [
-                    'source' => $source->name,
-                    'provider' => $source->provider,
-                    'endpoint' => $endpoint,
-                    'query' => $query,
-                    'status' => $this->responseStatus($exception),
-                    'error' => $this->responseError($exception),
-                    'message' => $this->safeExceptionMessage($exception),
-                ]);
+            $query = trim((string) $query);
 
-                if ($this->isQuotaExhausted($exception)) {
-                    self::$quotaExhaustedEndpoints[$endpoint] = true;
-
-                    return $items;
-                }
-
+            if ($query === '') {
                 continue;
             }
 
-            $decoded = json_decode((string) $response->getBody(), true);
+            $decoded = $this->searchResponse($client, $endpoint, $query, $config, $source);
+
+            if ($decoded === null) {
+                return $items;
+            }
 
             if (! is_array($decoded)) {
                 Log::warning('Lead discovery search returned non-JSON response.', [
@@ -96,6 +91,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
                 if ($this->isQuotaErrorMessage((string) $decoded['error'])) {
                     self::$quotaExhaustedEndpoints[$endpoint] = true;
+                    $this->markMonthlySearchBudgetExhausted($config);
 
                     return $items;
                 }
@@ -105,9 +101,22 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
             foreach ($this->results($decoded, $config) as $item) {
                 $mapped = $this->mapItem($item, $source, $campaign, $query, $config);
+                $url = mb_strtolower((string) ($mapped['source_url'] ?? ''));
 
                 if (! $this->allowedResult($mapped, $config)) {
                     continue;
+                }
+
+                if ($url !== '' && isset($seenUrls[$url])) {
+                    continue;
+                }
+
+                if ($url !== '' && ! $dryRun && $this->resultAlreadySeen($url, $config)) {
+                    continue;
+                }
+
+                if ($url !== '') {
+                    $seenUrls[$url] = true;
                 }
 
                 $items[] = $mapped;
@@ -159,6 +168,205 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         }
 
         return $query;
+    }
+
+    private function searchResponse(Client $client, string $endpoint, string $query, array $config, LeadSource $source): ?array
+    {
+        $requestQuery = array_merge($this->queryParameters($config), [
+            $config['query_parameter'] ?? 'q' => $query,
+        ]);
+        $cacheKey = $this->queryCacheKey($endpoint, $config['method'] ?? 'GET', $requestQuery);
+
+        if (Cache::has($cacheKey)) {
+            $cached = Cache::get($cacheKey);
+
+            return is_array($cached) ? $cached : null;
+        }
+
+        if (isset(self::$quotaExhaustedEndpoints[$endpoint])) {
+            return null;
+        }
+
+        if (! $this->hasMonthlySearchBudget($config)) {
+            Log::warning('Lead discovery monthly search budget exhausted.', [
+                'source' => $source->name,
+                'provider' => $source->provider,
+                'endpoint' => $endpoint,
+                'query' => $query,
+                'monthly_limit' => $this->monthlySearchLimit($config),
+                'month' => now()->format('Y-m'),
+            ]);
+
+            self::$quotaExhaustedEndpoints[$endpoint] = true;
+
+            return null;
+        }
+
+        if (! $this->hasRunSearchBudget()) {
+            return null;
+        }
+
+        if (! $this->consumeMonthlySearch($config)) {
+            self::$quotaExhaustedEndpoints[$endpoint] = true;
+
+            return null;
+        }
+
+        $this->consumeRunSearch();
+
+        try {
+            $response = $client->request($config['method'] ?? 'GET', $endpoint, [
+                'query' => $requestQuery,
+                'headers' => $this->authorizationHeaders($config),
+            ]);
+        } catch (GuzzleException $exception) {
+            Log::warning('Lead discovery search request failed.', [
+                'source' => $source->name,
+                'provider' => $source->provider,
+                'endpoint' => $endpoint,
+                'query' => $query,
+                'status' => $this->responseStatus($exception),
+                'error' => $this->responseError($exception),
+                'message' => $this->safeExceptionMessage($exception),
+            ]);
+
+            if ($this->isQuotaExhausted($exception)) {
+                self::$quotaExhaustedEndpoints[$endpoint] = true;
+                $this->markMonthlySearchBudgetExhausted($config);
+            }
+
+            return null;
+        }
+
+        $decoded = json_decode((string) $response->getBody(), true);
+
+        if (is_array($decoded) && ! isset($decoded['error'])) {
+            Cache::put($cacheKey, $decoded, now()->addDays($this->queryCacheTtlDays($config)));
+        }
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private function queryCacheKey(string $endpoint, string $method, array $requestQuery): string
+    {
+        foreach (['api_key', 'key', 'token', 'access_token'] as $secretKey) {
+            unset($requestQuery[$secretKey]);
+        }
+
+        ksort($requestQuery);
+
+        return 'lead_generation:search_query:' . sha1($method . '|' . $endpoint . '|' . json_encode($requestQuery));
+    }
+
+    private function queryCacheTtlDays(array $config): int
+    {
+        return max(1, (int) ($config['cache_ttl_days'] ?? config('lead_generation.search.cache_ttl_days', 30)));
+    }
+
+    private function resultAlreadySeen(string $url, array $config): bool
+    {
+        if (Lead::query()->where('source_url', $url)->exists() || RawLead::query()->where('source_url', $url)->exists()) {
+            return true;
+        }
+
+        $key = 'lead_generation:search_result:' . sha1($url);
+        $ttl = now()->addDays(max(1, (int) ($config['dedupe_ttl_days'] ?? config('lead_generation.search.dedupe_ttl_days', 35))));
+
+        return ! Cache::add($key, true, $ttl);
+    }
+
+    private function hasRunSearchBudget(): bool
+    {
+        return $this->remainingRunSearches === null || $this->remainingRunSearches > 0;
+    }
+
+    private function consumeRunSearch(): void
+    {
+        if ($this->remainingRunSearches !== null) {
+            $this->remainingRunSearches = max(0, $this->remainingRunSearches - 1);
+        }
+    }
+
+    private function hasMonthlySearchBudget(array $config): bool
+    {
+        $limit = $this->monthlySearchLimit($config);
+
+        if ($limit < 0) {
+            return true;
+        }
+
+        return $this->monthlySearchUsage()['used'] < $limit;
+    }
+
+    private function consumeMonthlySearch(array $config): bool
+    {
+        $limit = $this->monthlySearchLimit($config);
+
+        if ($limit < 0) {
+            return true;
+        }
+
+        [$setting, $usage] = $this->monthlySearchUsageWithSetting();
+
+        if ((int) ($usage['used'] ?? 0) >= $limit) {
+            return false;
+        }
+
+        $usage['used'] = (int) ($usage['used'] ?? 0) + 1;
+        $usage['limit'] = $limit;
+        $setting->update(['value' => $usage]);
+
+        return true;
+    }
+
+    private function markMonthlySearchBudgetExhausted(array $config): void
+    {
+        $limit = $this->monthlySearchLimit($config);
+
+        if ($limit < 0) {
+            return;
+        }
+
+        [$setting, $usage] = $this->monthlySearchUsageWithSetting();
+        $usage['used'] = $limit;
+        $usage['limit'] = $limit;
+        $setting->update(['value' => $usage]);
+    }
+
+    private function monthlySearchUsage(): array
+    {
+        return $this->monthlySearchUsageWithSetting()[1];
+    }
+
+    private function monthlySearchUsageWithSetting(): array
+    {
+        $month = now()->format('Y-m');
+        $limit = $this->monthlySearchLimit([]);
+        $setting = Setting::query()->firstOrCreate(
+            ['key' => 'lead_generation.search_usage'],
+            [
+                'value' => ['month' => $month, 'used' => 0, 'limit' => $limit],
+                'type' => 'array',
+                'group' => 'lead_generation',
+                'description' => 'Monthly SerpApi search usage for lead discovery.',
+            ]
+        );
+        $usage = is_array($setting->value) ? $setting->value : [];
+
+        if (($usage['month'] ?? null) !== $month) {
+            $usage = ['month' => $month, 'used' => 0, 'limit' => $limit];
+            $setting->update(['value' => $usage]);
+        }
+
+        $usage['used'] = (int) ($usage['used'] ?? 0);
+        $usage['limit'] = $limit;
+
+        return [$setting, $usage];
+    }
+
+    private function monthlySearchLimit(array $config): int
+    {
+        return (int) ($config['monthly_limit'] ?? config('lead_generation.search.monthly_limit', 250));
     }
 
     private function responseStatus(GuzzleException $exception): ?int
