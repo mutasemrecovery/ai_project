@@ -24,28 +24,40 @@ class SearchQueryBuilder
 
                     if (! empty($sourceConfig['query_templates'])) {
                         foreach ((array) $sourceConfig['query_templates'] as $template) {
-                            foreach (array_slice($keywords, 0, 6) as $keyword) {
-                                $queries[] = $this->formatQuery($this->renderTemplate((string) $template, [
-                                    'industry' => $industry,
-                                    'country' => $country,
-                                    'city' => $city,
-                                    'location' => $location,
-                                    'keyword' => $keyword,
-                                    'service' => '',
-                                    'base' => $base,
-                                ]), $sourceConfig);
+                            $template = (string) $template;
+                            $usesKeyword = str_contains($template, '{keyword}');
+                            $usesService = str_contains($template, '{service}');
+                            $baseValues = [
+                                'industry' => $industry,
+                                'country' => $country,
+                                'city' => $city,
+                                'location' => $location,
+                                'base' => $base,
+                            ];
+
+                            if ($usesKeyword) {
+                                foreach (array_slice($keywords, 0, 6) as $keyword) {
+                                    $queries[] = $this->formatQuery($this->renderTemplate($template, array_merge($baseValues, [
+                                        'keyword' => $keyword,
+                                        'service' => '',
+                                    ])), $sourceConfig);
+                                }
                             }
 
-                            foreach (array_slice($services, 0, 6) as $service) {
-                                $queries[] = $this->formatQuery($this->renderTemplate((string) $template, [
-                                    'industry' => $industry,
-                                    'country' => $country,
-                                    'city' => $city,
-                                    'location' => $location,
+                            if ($usesService) {
+                                foreach (array_slice($services, 0, 6) as $service) {
+                                    $queries[] = $this->formatQuery($this->renderTemplate($template, array_merge($baseValues, [
+                                        'keyword' => '',
+                                        'service' => $service,
+                                    ])), $sourceConfig);
+                                }
+                            }
+
+                            if (! $usesKeyword && ! $usesService) {
+                                $queries[] = $this->formatQuery($this->renderTemplate($template, array_merge($baseValues, [
                                     'keyword' => '',
-                                    'service' => $service,
-                                    'base' => $base,
-                                ]), $sourceConfig);
+                                    'service' => '',
+                                ])), $sourceConfig);
                             }
                         }
 

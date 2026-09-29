@@ -6,11 +6,14 @@ use App\Models\Campaign;
 use App\Models\LeadSource;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
 class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 {
+    private static array $quotaExhaustedEndpoints = [];
+
     public function __construct(private SearchQueryBuilder $queries)
     {
     }
@@ -21,6 +24,10 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         $endpoint = $config['endpoint'] ?? null;
 
         if (! $endpoint) {
+            return [];
+        }
+
+        if (isset(self::$quotaExhaustedEndpoints[$endpoint])) {
             return [];
         }
 
@@ -51,8 +58,16 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
                     'provider' => $source->provider,
                     'endpoint' => $endpoint,
                     'query' => $query,
-                    'message' => $exception->getMessage(),
+                    'status' => $this->responseStatus($exception),
+                    'error' => $this->responseError($exception),
+                    'message' => $this->safeExceptionMessage($exception),
                 ]);
+
+                if ($this->isQuotaExhausted($exception)) {
+                    self::$quotaExhaustedEndpoints[$endpoint] = true;
+
+                    return $items;
+                }
 
                 continue;
             }
@@ -78,6 +93,12 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
                     'query' => $query,
                     'error' => $decoded['error'],
                 ]);
+
+                if ($this->isQuotaErrorMessage((string) $decoded['error'])) {
+                    self::$quotaExhaustedEndpoints[$endpoint] = true;
+
+                    return $items;
+                }
 
                 continue;
             }
@@ -138,6 +159,53 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         }
 
         return $query;
+    }
+
+    private function responseStatus(GuzzleException $exception): ?int
+    {
+        return $exception instanceof RequestException
+            ? $exception->getResponse()?->getStatusCode()
+            : null;
+    }
+
+    private function responseError(GuzzleException $exception): ?string
+    {
+        if (! $exception instanceof RequestException || ! $exception->getResponse()) {
+            return null;
+        }
+
+        $body = (string) $exception->getResponse()->getBody();
+        $decoded = json_decode($body, true);
+
+        if (is_array($decoded) && isset($decoded['error']) && is_scalar($decoded['error'])) {
+            return (string) $decoded['error'];
+        }
+
+        return trim(mb_substr($body, 0, 300)) ?: null;
+    }
+
+    private function safeExceptionMessage(GuzzleException $exception): string
+    {
+        $message = $exception->getMessage();
+        $message = preg_replace('/([?&](?:api_key|key|token|access_token)=)[^&\s]+/i', '$1[redacted]', $message) ?: $message;
+
+        return preg_replace('/(api[_-]?key["\']?\s*[:=]\s*["\']?)[^"\'\s,&}]+/i', '$1[redacted]', $message) ?: $message;
+    }
+
+    private function isQuotaExhausted(GuzzleException $exception): bool
+    {
+        return $this->responseStatus($exception) === 429
+            || $this->isQuotaErrorMessage($this->responseError($exception) ?: $exception->getMessage());
+    }
+
+    private function isQuotaErrorMessage(string $message): bool
+    {
+        $message = mb_strtolower($message);
+
+        return str_contains($message, 'run out of searches')
+            || str_contains($message, 'too many requests')
+            || str_contains($message, 'quota')
+            || str_contains($message, 'rate limit');
     }
 
     private function results(array $decoded, array $config): array

@@ -53,4 +53,33 @@ class SearchQueryBuilderTest extends TestCase
         $this->assertContains('site:facebook.com Clinic Amman Jordan يحتاج نظام -jobs', $queries);
         $this->assertContains('site:facebook.com Clinic Amman Jordan Booking System -jobs', $queries);
     }
+
+    public function test_it_does_not_render_empty_keyword_or_service_quotes(): void
+    {
+        $campaign = new Campaign([
+            'countries' => ['Jordan'],
+            'cities' => ['Amman'],
+            'industries' => ['Retail'],
+            'services' => ['Inventory System'],
+            'keywords' => ['branches'],
+        ]);
+
+        $queries = (new SearchQueryBuilder())->buildForCampaign($campaign, [
+            'site_filters' => ['site:x.com'],
+            'query_suffix' => '-login',
+            'query_templates' => [
+                '{industry} {location} "{keyword}"',
+                '{industry} {location} "{service}"',
+                '{industry} {location} need system',
+            ],
+        ]);
+
+        $this->assertContains('site:x.com Retail Amman Jordan "branches" -login', $queries);
+        $this->assertContains('site:x.com Retail Amman Jordan "Inventory System" -login', $queries);
+        $this->assertContains('site:x.com Retail Amman Jordan need system -login', $queries);
+
+        foreach ($queries as $query) {
+            $this->assertStringNotContainsString('""', $query);
+        }
+    }
 }
