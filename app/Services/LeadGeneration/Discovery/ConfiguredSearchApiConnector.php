@@ -197,12 +197,13 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
     private function allowedResult(array $item, array $config): bool
     {
         $url = strtolower((string) ($item['source_url'] ?? ''));
+        $companyName = (string) ($item['company_name'] ?? '');
 
         if ($url === '') {
             return false;
         }
 
-        if (empty($item['company_name']) || mb_strlen((string) $item['company_name']) < 2) {
+        if ($this->looksLikeBadCompanyName($companyName)) {
             return false;
         }
 
@@ -220,7 +221,14 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
         foreach ($allowed as $needle) {
             if (is_string($needle) && $needle !== '' && str_contains($url, strtolower($needle))) {
-                return (int) ($item['raw_data']['candidate_quality_score'] ?? 0) >= (int) ($config['min_quality_score'] ?? 7);
+                $qualityScore = (int) ($item['raw_data']['candidate_quality_score'] ?? 0);
+                $qualitySignals = (array) ($item['raw_data']['candidate_quality_signals'] ?? []);
+
+                if (($config['requires_positive_intent'] ?? false) && ! $this->hasPositiveIntentSignal($qualitySignals)) {
+                    return false;
+                }
+
+                return $qualityScore >= (int) ($config['min_quality_score'] ?? 10);
             }
         }
 
@@ -251,11 +259,14 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
     private function qualitySignals(?string $companyName, ?string $description, ?string $sourceUrl, string $query, array $campaignContext): array
     {
-        $text = mb_strtolower(implode(' ', array_filter([$companyName, $description, $sourceUrl, $query])));
+        $resultText = mb_strtolower(implode(' ', array_filter([$companyName, $description, $sourceUrl])));
+        $queryText = mb_strtolower($query);
+        $contextText = trim($resultText . ' ' . $queryText);
+        $hasDisqualifyingContext = preg_match('/\b(experience with|is a plus|job|jobs|career|careers|hiring|salary|responsibilities|qualifications|login|sign in)\b/i', $resultText) === 1;
         $score = 0;
         $signals = [];
 
-        if ($companyName && mb_strlen($companyName) >= 3 && mb_strlen($companyName) <= 90) {
+        if (! $this->looksLikeBadCompanyName((string) $companyName)) {
             $score += 3;
             $signals[] = 'clear_company_name';
         }
@@ -266,35 +277,121 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         }
 
         foreach (array_filter($campaignContext) as $value) {
-            if (str_contains($text, mb_strtolower($value))) {
+            if (str_contains($contextText, mb_strtolower($value))) {
                 $score += 1;
             }
         }
 
-        foreach (['book', 'booking', 'appointment', 'order online', 'delivery', 'new branch', 'new project', 'registration open', 'crm', 'erp', 'automation', 'whatsapp', 'membership', 'reservation', 'inventory', 'fleet', 'tracking'] as $keyword) {
-            if (str_contains($text, $keyword)) {
+        foreach ([
+            'book now',
+            'book appointment',
+            'order online',
+            'delivery available',
+            'new branch',
+            'new project',
+            'registration open',
+            'reservation',
+            'dm to order',
+            'call to book',
+            'whatsapp ordering',
+            'membership offer',
+            'tracking',
+            'حجز موعد',
+            'احجز موعد',
+            'اطلب اونلاين',
+            'اطلب أونلاين',
+            'طلب اونلاين',
+            'طلب أونلاين',
+            'واتساب طلبات',
+            'فرع جديد',
+            'افتتاح فرع',
+            'التسجيل مفتوح',
+        ] as $keyword) {
+            if (str_contains($resultText, $keyword)) {
+                $score += 3;
+                $signals[] = 'intent:' . $keyword;
+            }
+        }
+
+        foreach (['crm', 'erp', 'automation', 'inventory', 'fleet'] as $keyword) {
+            if (! $hasDisqualifyingContext && str_contains($resultText, $keyword) && preg_match('/\b(need|needs|looking for|request|requires?|manual|manage|tracking|operations?|sales|customers?)\b|يحتاج|نحتاج|نبحث عن|مطلوب نظام|إدارة|ادارة|عملاء|مبيعات|مخزون|تتبع|عمليات/u', $resultText)) {
                 $score += 2;
                 $signals[] = 'intent:' . $keyword;
             }
         }
 
         foreach (['official', 'business', 'services', 'solutions', 'clinic', 'restaurant', 'agency', 'company', 'center', 'store'] as $keyword) {
-            if (str_contains($text, $keyword)) {
+            if (str_contains($resultText, $keyword)) {
                 $score += 1;
             }
         }
 
-        foreach (['job', 'jobs', 'career', 'careers', 'hiring', 'salary', 'course', 'training job', 'login', 'sign in', 'marketplace listing'] as $keyword) {
-            if (str_contains($text, $keyword)) {
-                $score -= 5;
+        foreach ([
+            'job',
+            'jobs',
+            'career',
+            'careers',
+            'hiring',
+            'salary',
+            'course',
+            'training job',
+            'login',
+            'sign in',
+            'marketplace listing',
+            'experience with',
+            'is a plus',
+            'join our team',
+            'job description',
+            'responsibilities',
+            'qualifications',
+            'مطلوب موظف',
+            'وظيفة',
+            'وظائف',
+            'توظيف',
+            'خبرة في',
+            'يفضل',
+        ] as $keyword) {
+            if (str_contains($resultText, $keyword)) {
+                $score -= 8;
                 $signals[] = 'negative:' . $keyword;
             }
+        }
+
+        if (preg_match('/\b(we offer|our platform|software suite|crm and sales|inventory, finance|ecommerce platform|erp software|crm software)\b/i', $resultText)) {
+            $score -= 6;
+            $signals[] = 'negative:software_vendor_context';
         }
 
         return [
             'score' => max(0, min(20, $score)),
             'signals' => array_values(array_unique($signals)),
         ];
+    }
+
+    private function looksLikeBadCompanyName(?string $companyName): bool
+    {
+        $companyName = trim((string) $companyName);
+
+        if ($companyName === '' || mb_strlen($companyName) < 2 || mb_strlen($companyName) > 90) {
+            return true;
+        }
+
+        if (preg_match('/[.!?]{1}|,|:|;|\b(experience with|is a plus|from crm|job|hiring|login|sign in)\b/i', $companyName)) {
+            return true;
+        }
+
+        return str_word_count($companyName) > 12;
+    }
+
+    private function hasPositiveIntentSignal(array $signals): bool
+    {
+        foreach ($signals as $signal) {
+            if (is_string($signal) && str_starts_with($signal, 'intent:')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function value(array $item, string|array|null $paths): ?string

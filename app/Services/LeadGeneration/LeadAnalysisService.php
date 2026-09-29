@@ -29,7 +29,7 @@ class LeadAnalysisService
         $analysis = $response->data;
         $scores = $this->scoring->score($lead, $analysis);
         $minimumScore = (int) ($lead->campaign?->minimum_score ?? 55);
-        $status = $analysis['is_potential_client'] && $scores['lead_score'] >= $minimumScore
+        $status = $this->isQualifiedBuyer($analysis) && $scores['lead_score'] >= $minimumScore
             ? Lead::STATUS_QUALIFIED
             : Lead::STATUS_IGNORED;
 
@@ -48,7 +48,7 @@ class LeadAnalysisService
 
     private function systemPrompt(): string
     {
-        return 'You qualify public business leads for a software development company. Do not invent facts. Every important signal must include evidence from the provided lead data or source URLs.';
+        return 'You qualify public business leads for a software development company. Return all human-readable values in Arabic only, including industry, detected_needs, recommended_services, signals.signal, signals.evidence, project_type, and reasoning. Do not invent facts. Every important signal must include evidence from the provided lead data or source URLs. Qualify only businesses that show explicit buying intent, an operational pain, an expansion event, or a clear digital gap that a software vendor can solve. Treat job posts, hiring requirements, login pages, marketplace listings, and companies advertising their own CRM/ERP/software products as not qualified unless the lead explicitly asks for an external software development partner. Do not recommend services from keyword overlap alone; only recommend a service when the evidence shows a business problem, operational gap, or buying intent. If the evidence is weak, set is_potential_client=false, detected_needs=[], recommended_services=[], and explain briefly in Arabic.';
     }
 
     private function userPrompt(Lead $lead): string
@@ -65,34 +65,54 @@ class LeadAnalysisService
             'source_reference' => $lead->source_reference,
             'campaign' => $lead->campaign?->name,
             'campaign_minimum_score' => $lead->campaign?->minimum_score,
+            'output_language' => 'Arabic',
+            'qualification_rule' => 'اعتبره مؤهلا فقط إذا كان هناك احتياج فعلي أو اهتمام شراء واضح، وليس مجرد ذكر كلمات مثل CRM أو ERP أو software.',
             'target_services' => [
-                'Laravel development',
-                'PHP development',
-                'Flutter mobile applications',
-                'API development',
-                'Admin dashboards',
-                'CRM',
-                'ERP',
-                'SaaS development',
-                'AI integration',
-                'AI automation',
-                'WhatsApp integrations',
-                'Restaurant ordering systems',
-                'Booking systems',
-                'E-commerce systems',
-                'Custom business software',
+                'تطوير Laravel',
+                'تطوير PHP',
+                'تطبيقات Flutter',
+                'تطوير API',
+                'لوحات تحكم إدارية',
+                'نظام CRM',
+                'نظام ERP',
+                'تطوير SaaS',
+                'تكامل ذكاء اصطناعي',
+                'أتمتة بالذكاء الاصطناعي',
+                'تكامل واتساب',
+                'أنظمة طلبات للمطاعم',
+                'أنظمة حجز',
+                'متاجر إلكترونية',
+                'برمجيات أعمال مخصصة',
             ],
             'pre_ai_business_signals' => $lead->business_signals ?: [],
         ], JSON_PRETTY_PRINT);
     }
 
+    private function isQualifiedBuyer(array $analysis): bool
+    {
+        if (! ($analysis['is_potential_client'] ?? false)) {
+            return false;
+        }
+
+        if ((float) ($analysis['confidence'] ?? 0) < 0.65) {
+            return false;
+        }
+
+        if (empty($analysis['detected_needs']) || empty($analysis['recommended_services'])) {
+            return false;
+        }
+
+        return collect($analysis['signals'] ?? [])
+            ->contains(fn ($signal) => is_array($signal) && (float) ($signal['confidence'] ?? 0) >= 0.7);
+    }
+
     private function summary(array $analysis): string
     {
         return trim(sprintf(
-            'Potential client: %s. Needs: %s. Services: %s.',
-            $analysis['is_potential_client'] ? 'yes' : 'no',
-            implode(', ', $analysis['detected_needs']),
-            implode(', ', $analysis['recommended_services'])
+            'عميل محتمل: %s. الاحتياجات: %s. الخدمات المقترحة: %s.',
+            $analysis['is_potential_client'] ? 'نعم' : 'لا',
+            implode('، ', $analysis['detected_needs']),
+            implode('، ', $analysis['recommended_services'])
         ));
     }
 }

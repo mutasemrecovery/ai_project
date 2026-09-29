@@ -22,6 +22,36 @@ class SearchQueryBuilder
                     $location = trim(implode(' ', array_filter([$city, $country])));
                     $base = trim("{$industry} {$location}");
 
+                    if (! empty($sourceConfig['query_templates'])) {
+                        foreach ((array) $sourceConfig['query_templates'] as $template) {
+                            foreach (array_slice($keywords, 0, 6) as $keyword) {
+                                $queries[] = $this->formatQuery($this->renderTemplate((string) $template, [
+                                    'industry' => $industry,
+                                    'country' => $country,
+                                    'city' => $city,
+                                    'location' => $location,
+                                    'keyword' => $keyword,
+                                    'service' => '',
+                                    'base' => $base,
+                                ]), $sourceConfig);
+                            }
+
+                            foreach (array_slice($services, 0, 6) as $service) {
+                                $queries[] = $this->formatQuery($this->renderTemplate((string) $template, [
+                                    'industry' => $industry,
+                                    'country' => $country,
+                                    'city' => $city,
+                                    'location' => $location,
+                                    'keyword' => '',
+                                    'service' => $service,
+                                    'base' => $base,
+                                ]), $sourceConfig);
+                            }
+                        }
+
+                        continue;
+                    }
+
                     foreach (array_slice($keywords, 0, 4) as $keyword) {
                         $queries[] = $this->formatQuery(trim("{$base} {$keyword}"), $sourceConfig);
                     }
@@ -34,6 +64,15 @@ class SearchQueryBuilder
         }
 
         return array_values(array_unique(array_filter($queries)));
+    }
+
+    private function renderTemplate(string $template, array $values): string
+    {
+        foreach ($values as $key => $value) {
+            $template = str_replace('{' . $key . '}', (string) $value, $template);
+        }
+
+        return trim(preg_replace('/\s+/u', ' ', $template) ?: '');
     }
 
     private function formatQuery(string $query, array $sourceConfig): string

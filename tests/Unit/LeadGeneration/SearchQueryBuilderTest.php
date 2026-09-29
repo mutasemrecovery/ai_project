@@ -28,4 +28,29 @@ class SearchQueryBuilderTest extends TestCase
             '(site:linkedin.com/company OR site:linkedin.com/showcase) Restaurant Amman Jordan Online Ordering -jobs -careers',
         ], $queries);
     }
+
+    public function test_it_can_expand_campaign_queries_from_source_templates(): void
+    {
+        $campaign = new Campaign([
+            'countries' => ['Jordan'],
+            'cities' => ['Amman'],
+            'industries' => ['Clinic'],
+            'services' => ['Booking System'],
+            'keywords' => ['book appointment'],
+        ]);
+
+        $queries = (new SearchQueryBuilder())->buildForCampaign($campaign, [
+            'site_filters' => ['site:facebook.com'],
+            'query_suffix' => '-jobs',
+            'query_templates' => [
+                '{industry} {location} {keyword}',
+                '{industry} {location} {service}',
+                '{industry} {location} يحتاج نظام',
+            ],
+        ]);
+
+        $this->assertContains('site:facebook.com Clinic Amman Jordan book appointment -jobs', $queries);
+        $this->assertContains('site:facebook.com Clinic Amman Jordan يحتاج نظام -jobs', $queries);
+        $this->assertContains('site:facebook.com Clinic Amman Jordan Booking System -jobs', $queries);
+    }
 }
