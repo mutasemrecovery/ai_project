@@ -19,7 +19,7 @@ class LeadDataNormalizer
         $data['city'] = $this->text($data['city'] ?? null);
         $data['industry'] = $this->text($data['industry'] ?? null);
 
-        foreach (['detected_services', 'business_signals'] as $key) {
+        foreach (['detected_services', 'business_signals', 'contact_methods'] as $key) {
             if (array_key_exists($key, $data)) {
                 $data[$key] = $this->arrayValues($data[$key]);
             }

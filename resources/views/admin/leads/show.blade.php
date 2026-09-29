@@ -29,6 +29,44 @@
                     <div class="col-md-6"><div class="text-muted small">{{ __('messages.lg_contact') }}</div>{{ $lead->contact_name ?: '-' }} {{ $lead->contact_role ? '- '.$lead->contact_role : '' }}</div>
                     <div class="col-md-6"><div class="text-muted small">{{ __('messages.lg_email') }}</div>{{ $lead->email ?: '-' }}</div>
                     <div class="col-md-6"><div class="text-muted small">{{ __('messages.lg_phone') }}</div>{{ $lead->phone ?: '-' }}</div>
+                    <div class="col-12">
+                        <div class="text-muted small">{{ __('messages.lg_contact_methods') }}</div>
+                        @php
+                            $contactTypeLabels = [
+                                'email' => __('messages.lg_email'),
+                                'phone' => __('messages.lg_phone'),
+                                'whatsapp' => __('messages.lg_channel_whatsapp'),
+                                'whatsapp_link' => __('messages.lg_channel_whatsapp'),
+                                'website' => __('messages.lg_website'),
+                                'linkedin' => 'LinkedIn',
+                                'facebook' => 'Facebook',
+                                'instagram' => 'Instagram',
+                                'x' => 'X',
+                                'short_link' => __('messages.lg_link'),
+                            ];
+                        @endphp
+                        @forelse($lead->contact_methods ?: [] as $method)
+                            @php
+                                $type = $method['type'] ?? 'link';
+                                $value = $method['value'] ?? null;
+                                $href = $method['url'] ?? $value;
+                                if ($type === 'email' && $value) { $href = 'mailto:'.$value; }
+                                if (in_array($type, ['phone', 'whatsapp'], true) && $value) { $href = ($type === 'whatsapp' ? 'https://wa.me/'.ltrim($value, '+') : 'tel:'.$value); }
+                            @endphp
+                            @if($value)
+                                <span class="pill pill-neutral me-1 mb-1">
+                                    {{ $contactTypeLabels[$type] ?? $type }}:
+                                    @if($href && (str_starts_with($href, 'http') || str_starts_with($href, 'mailto:') || str_starts_with($href, 'tel:')))
+                                        <a href="{{ $href }}" target="_blank" rel="noopener">{{ $value }}</a>
+                                    @else
+                                        {{ $value }}
+                                    @endif
+                                </span>
+                            @endif
+                        @empty
+                            -
+                        @endforelse
+                    </div>
                     <div class="col-12"><div class="text-muted small">{{ __('messages.lg_description') }}</div>{{ $lead->description ?: '-' }}</div>
                     <div class="col-12"><div class="text-muted small">{{ __('messages.lg_source') }}</div>{{ $lead->source ?: '-' }} @if($lead->source_url) - <a href="{{ $lead->source_url }}" target="_blank" rel="noopener">{{ __('messages.lg_evidence') }}</a>@endif</div>
                 </div>

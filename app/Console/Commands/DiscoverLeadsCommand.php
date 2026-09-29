@@ -23,8 +23,11 @@ class DiscoverLeadsCommand extends Command
 
         if ($this->option('dry-run')) {
             $items = $discovery->discover($campaignId, $source, $limit, true);
-            $this->table(['company_name', 'source_url', 'source', 'query'], $items->map(fn ($item) => [
+            $this->table(['company_name', 'email', 'phone', 'contact', 'source_url', 'source', 'query'], $items->map(fn ($item) => [
                 $item['company_name'] ?? null,
+                $item['email'] ?? null,
+                $item['phone'] ?? null,
+                $this->firstContactMethod($item['contact_methods'] ?? []),
                 $item['source_url'] ?? null,
                 $item['source'] ?? null,
                 $item['raw_data']['query'] ?? null,
@@ -96,5 +99,16 @@ class DiscoverLeadsCommand extends Command
                 $this->line('- ' . $query);
             }
         }
+    }
+
+    private function firstContactMethod(array $methods): ?string
+    {
+        foreach ($methods as $method) {
+            if (is_array($method) && ! empty($method['value'])) {
+                return trim(($method['type'] ?? 'contact') . ': ' . $method['value']);
+            }
+        }
+
+        return null;
     }
 }

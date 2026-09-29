@@ -163,10 +163,26 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         $map = $config['field_map'] ?? [];
         $sourceUrl = $this->value($item, $map['source_url'] ?? ['url', 'link']);
         $description = $this->value($item, $map['description'] ?? ['description', 'snippet', 'content']);
+        $explicitCompanyName = $this->value($item, ['company_name', 'business_name', 'organization']);
         $companyName = $this->cleanCompanyName(
             $this->value($item, $map['company_name'] ?? ['company_name', 'name', 'title']),
             $config
         );
+        $isGroupRequest = (bool) ($config['allows_group_requests'] ?? false);
+
+        if ($isGroupRequest && ! $explicitCompanyName) {
+            $companyName = 'Facebook Group Request';
+        } elseif ($isGroupRequest && $this->looksLikeBadCompanyName($companyName)) {
+            $companyName = 'Facebook Group Request';
+        }
+
+        $website = $this->value($item, $map['website'] ?? ['website', 'company_website', 'official_website']);
+        $email = $this->value($item, $map['email'] ?? ['email']);
+        $phone = $this->value($item, $map['phone'] ?? ['phone', 'telephone']);
+        $contactMethods = $this->contactMethods($item, $sourceUrl, $website, $email, $phone);
+        $website = $website ?: $this->firstContactMethodValue($contactMethods, ['website']);
+        $email = $email ?: $this->firstContactMethodValue($contactMethods, ['email']);
+        $phone = $phone ?: $this->firstContactMethodValue($contactMethods, ['phone', 'whatsapp']);
         $campaignContext = $this->campaignContext($campaign, $query);
         $quality = $this->qualitySignals($companyName, $description, $sourceUrl, $query, $campaignContext);
 
@@ -174,9 +190,10 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             'source' => $source->name,
             'source_url' => $sourceUrl,
             'company_name' => $companyName,
-            'website' => $this->value($item, $map['website'] ?? ['website', 'company_website', 'official_website']),
-            'email' => $this->value($item, $map['email'] ?? ['email']),
-            'phone' => $this->value($item, $map['phone'] ?? ['phone', 'telephone']),
+            'website' => $website,
+            'email' => $email,
+            'phone' => $phone,
+            'contact_methods' => $contactMethods,
             'location' => $this->value($item, $map['location'] ?? ['location', 'address']),
             'raw_data' => array_filter(array_merge($item, [
                 'query' => $query,
@@ -189,7 +206,9 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
                 'candidate_quality_signals' => $quality['signals'],
                 'source_reference' => $config['source_reference'] ?? $source->provider ?? $source->name,
                 'platform' => $config['platform'] ?? $source->provider,
+                'candidate_type' => $isGroupRequest ? 'facebook_group_request' : 'business_profile',
                 'public_profile_url' => $sourceUrl,
+                'contact_methods' => $contactMethods,
             ]), fn ($value) => $value !== null && $value !== ''),
         ];
     }
@@ -224,6 +243,10 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
                 $qualityScore = (int) ($item['raw_data']['candidate_quality_score'] ?? 0);
                 $qualitySignals = (array) ($item['raw_data']['candidate_quality_signals'] ?? []);
 
+                if ($this->hasFatalNegativeSignal($qualitySignals)) {
+                    return false;
+                }
+
                 if (($config['requires_positive_intent'] ?? false) && ! $this->hasPositiveIntentSignal($qualitySignals)) {
                     return false;
                 }
@@ -257,12 +280,262 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         return null;
     }
 
+    private function contactMethods(array $item, ?string $sourceUrl, ?string $website, ?string $email, ?string $phone): array
+    {
+        $methods = [];
+        $text = implode(' ', $this->flattenScalarValues($item));
+
+        if ($email) {
+            $methods[] = $this->contactMethod('email', $email, 'search_field', 0.95);
+        }
+
+        foreach ($this->extractEmails($text) as $value) {
+            $methods[] = $this->contactMethod('email', $value, 'search_text', 0.9);
+        }
+
+        if ($phone) {
+            $methods[] = $this->contactMethod('phone', $phone, 'search_field', 0.9);
+        }
+
+        foreach ($this->extractWhatsAppContacts($text) as $method) {
+            $methods[] = $method;
+        }
+
+        foreach ($this->extractPhones($text) as $value) {
+            $methods[] = $this->contactMethod('phone', $value, 'search_text', 0.75);
+        }
+
+        if ($website) {
+            $methods[] = $this->contactMethod('website', $this->normalizeUrl($website), 'search_field', 0.85);
+        }
+
+        foreach ($this->extractUrls($text) as $url) {
+            $type = $this->contactTypeForUrl($url);
+            $confidence = $type === 'website' ? 0.75 : 0.7;
+            $methods[] = $this->contactMethod($type, $url, 'search_text', $confidence);
+        }
+
+        if ($sourceUrl) {
+            $methods[] = $this->contactMethod($this->contactTypeForUrl($sourceUrl), $sourceUrl, 'source_profile', 0.8);
+        }
+
+        return $this->uniqueContactMethods($methods);
+    }
+
+    private function firstContactMethodValue(array $methods, array $types): ?string
+    {
+        foreach ($methods as $method) {
+            if (in_array($method['type'] ?? null, $types, true) && ! empty($method['value'])) {
+                return $method['value'];
+            }
+        }
+
+        return null;
+    }
+
+    private function contactMethod(string $type, ?string $value, string $source, float $confidence, array $extra = []): array
+    {
+        $value = is_string($value) ? trim($value, " \t\n\r\0\x0B.,;()[]{}<>\"'") : null;
+
+        return array_filter(array_merge([
+            'type' => $type,
+            'value' => $value,
+            'source' => $source,
+            'confidence' => $confidence,
+        ], $extra), fn ($item) => $item !== null && $item !== '');
+    }
+
+    private function extractEmails(string $text): array
+    {
+        preg_match_all('/(?<![A-Z0-9._%+\-])[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}(?![A-Z0-9.\-])/i', $text, $matches);
+
+        return array_values(array_unique(array_map(
+            fn ($email) => mb_strtolower(trim($email)),
+            $matches[0] ?? []
+        )));
+    }
+
+    private function extractWhatsAppContacts(string $text): array
+    {
+        $methods = [];
+
+        preg_match_all('/(?:wa\.me\/|whatsapp\.com\/send\?phone=)(\+?\d{7,15})/i', $text, $matches);
+
+        foreach ($matches[1] ?? [] as $phone) {
+            $normalized = $this->normalizePhone($phone);
+            $methods[] = $this->contactMethod('whatsapp', $normalized, 'whatsapp_link', 0.95, [
+                'url' => 'https://wa.me/' . ltrim((string) $normalized, '+'),
+            ]);
+        }
+
+        preg_match_all('/whats\s*app|whatsapp/i', $text, $whatsAppMentions, PREG_OFFSET_CAPTURE);
+
+        foreach ($whatsAppMentions[0] ?? [] as $mention) {
+            $offset = max(0, (int) $mention[1] - 40);
+            $nearby = substr($text, $offset, 120);
+
+            foreach ($this->extractPhones($nearby) as $phone) {
+                $methods[] = $this->contactMethod('whatsapp', $phone, 'whatsapp_text', 0.85);
+            }
+        }
+
+        return $methods;
+    }
+
+    private function extractPhones(string $text): array
+    {
+        $text = preg_replace('/https?:\/\/\S+|www\.\S+|[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', ' ', $text) ?: $text;
+        preg_match_all('/(?:\+|00)?\d[\d\s().-]{7,}\d/', $text, $matches);
+
+        $phones = [];
+
+        foreach ($matches[0] ?? [] as $phone) {
+            $normalized = $this->normalizePhone($phone);
+            $digits = preg_replace('/\D+/', '', (string) $normalized) ?: '';
+
+            if (strlen($digits) < 8 || strlen($digits) > 15) {
+                continue;
+            }
+
+            if (preg_match('/^(19|20)\d{6,}$/', $digits)) {
+                continue;
+            }
+
+            $phones[] = $normalized;
+        }
+
+        return array_values(array_unique($phones));
+    }
+
+    private function extractUrls(string $text): array
+    {
+        preg_match_all('/(?:https?:\/\/|www\.)[^\s<>"\']+|(?<!@)\b[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<>"\']*)?/i', $text, $matches);
+
+        $urls = [];
+
+        foreach ($matches[0] ?? [] as $url) {
+            $normalized = $this->normalizeUrl($url);
+
+            if ($normalized) {
+                $urls[] = $normalized;
+            }
+        }
+
+        return array_values(array_unique($urls));
+    }
+
+    private function normalizeUrl(?string $url): ?string
+    {
+        if (! is_string($url) || trim($url) === '') {
+            return null;
+        }
+
+        $url = trim($url, " \t\n\r\0\x0B.,;()[]{}<>\"'");
+
+        if (! preg_match('/^https?:\/\//i', $url)) {
+            $url = 'https://' . $url;
+        }
+
+        return filter_var($url, FILTER_VALIDATE_URL) ? rtrim($url, '/') : null;
+    }
+
+    private function normalizePhone(?string $phone): ?string
+    {
+        if (! is_string($phone) || trim($phone) === '') {
+            return null;
+        }
+
+        $phone = trim($phone);
+        $hasPlus = str_starts_with($phone, '+');
+        $digits = preg_replace('/\D+/', '', $phone) ?: '';
+
+        if ($digits === '') {
+            return null;
+        }
+
+        if (str_starts_with($digits, '00')) {
+            return '+' . substr($digits, 2);
+        }
+
+        return $hasPlus ? '+' . $digits : $digits;
+    }
+
+    private function contactTypeForUrl(string $url): string
+    {
+        $host = mb_strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return match (true) {
+            str_contains($host, 'linkedin.com') => 'linkedin',
+            str_contains($host, 'facebook.com') => 'facebook',
+            str_contains($host, 'instagram.com') => 'instagram',
+            str_contains($host, 'x.com') || str_contains($host, 'twitter.com') => 'x',
+            str_contains($host, 'wa.me') || str_contains($host, 'whatsapp.com') => 'whatsapp_link',
+            default => $this->isShortLinkHost($host) ? 'short_link' : 'website',
+        };
+    }
+
+    private function uniqueContactMethods(array $methods): array
+    {
+        $seen = [];
+        $unique = [];
+
+        foreach ($methods as $method) {
+            $value = $method['value'] ?? null;
+
+            if (! is_string($value) || $value === '') {
+                continue;
+            }
+
+            $key = mb_strtolower(($method['type'] ?? 'unknown') . ':' . $value);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $unique[] = $method;
+        }
+
+        return $unique;
+    }
+
+    private function isShortLinkHost(string $host): bool
+    {
+        return in_array($host, ['bit.ly', 'tinyurl.com', 't.co', 'lnkd.in', 'goo.gl'], true);
+    }
+
+    private function flattenScalarValues(mixed $value): array
+    {
+        if (is_scalar($value)) {
+            $value = trim((string) $value);
+
+            return $value === '' ? [] : [$value];
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $values = [];
+
+        foreach ($value as $item) {
+            $values = array_merge($values, $this->flattenScalarValues($item));
+        }
+
+        return $values;
+    }
+
     private function qualitySignals(?string $companyName, ?string $description, ?string $sourceUrl, string $query, array $campaignContext): array
     {
         $resultText = mb_strtolower(implode(' ', array_filter([$companyName, $description, $sourceUrl])));
         $queryText = mb_strtolower($query);
         $contextText = trim($resultText . ' ' . $queryText);
-        $hasDisqualifyingContext = preg_match('/\b(experience with|is a plus|job|jobs|career|careers|hiring|salary|responsibilities|qualifications|login|sign in)\b/i', $resultText) === 1;
+        $hasDisqualifyingContext = preg_match('/\b(experience with|is a plus|job|jobs|career|careers|hiring|salary|responsibilities|qualifications|login|sign in)\b|وظيفة|وظائف|توظيف|راتب|دوام|خبرة|للعمل|شاغر/u', $resultText) === 1;
+        $hasPromotionalSoftwareContext = preg_match('/\b(want to|start today|try our|our crm|with a crm system|crm system, everything|manage your business effortlessly|boost your business|grow your business with|marketingagency|marketing agency|website design|software for your business)\b/i', $resultText) === 1;
+        $hasPublicCustomerCtaContext = preg_match('/\b(book now|bookings? essential|bookings? via|via our website|tickets?|event|show|performance|register now|registration open|order online|delivery available|membership offer|rooms available|packages|offers?)\b/i', $resultText) === 1;
+        $hasExplicitSoftwareRequest = ! $hasDisqualifyingContext
+            && ! $hasPromotionalSoftwareContext
+            && preg_match('/\b(looking for|need|needs|needed|who can build|quote|quotation|proposal|developer|programmer|software company|web developer|app developer|website|mobile app|web app|booking system|crm|erp|inventory system)\b|محتاج|محتاجة|محتاجين|احتاج|أحتاج|بدي|بدنا|نحتاج|مين\s+(?:بعمل|بيعمل|يعمل)|شركة\s+برمجة|مبرمج|مطور|تصميم\s+موقع|تطبيق|متجر\s+(?:الكتروني|إلكتروني)|نظام\s+(?:حجز|مخزون|محاسبة|ادارة|إدارة)/iu', $resultText) === 1;
         $score = 0;
         $signals = [];
 
@@ -280,6 +553,11 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             if (str_contains($contextText, mb_strtolower($value))) {
                 $score += 1;
             }
+        }
+
+        if ($hasExplicitSoftwareRequest) {
+            $score += 10;
+            $signals[] = 'intent:software_request';
         }
 
         foreach ([
@@ -314,7 +592,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         }
 
         foreach (['crm', 'erp', 'automation', 'inventory', 'fleet'] as $keyword) {
-            if (! $hasDisqualifyingContext && str_contains($resultText, $keyword) && preg_match('/\b(need|needs|looking for|request|requires?|manual|manage|tracking|operations?|sales|customers?)\b|يحتاج|نحتاج|نبحث عن|مطلوب نظام|إدارة|ادارة|عملاء|مبيعات|مخزون|تتبع|عمليات/u', $resultText)) {
+            if (! $hasDisqualifyingContext && ! $hasPromotionalSoftwareContext && str_contains($resultText, $keyword) && preg_match('/\b(need|needs|looking for|request|requires?|manual|manage|tracking|operations?|sales|customers?)\b|يحتاج|نحتاج|نبحث عن|مطلوب نظام|إدارة|ادارة|عملاء|مبيعات|مخزون|تتبع|عمليات/u', $resultText)) {
                 $score += 2;
                 $signals[] = 'intent:' . $keyword;
             }
@@ -357,9 +635,24 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             }
         }
 
+        if ($hasDisqualifyingContext) {
+            $score -= 8;
+            $signals[] = 'negative:disqualifying_context';
+        }
+
         if (preg_match('/\b(we offer|our platform|software suite|crm and sales|inventory, finance|ecommerce platform|erp software|crm software)\b/i', $resultText)) {
             $score -= 6;
             $signals[] = 'negative:software_vendor_context';
+        }
+
+        if ($hasPromotionalSoftwareContext) {
+            $score -= 10;
+            $signals[] = 'negative:promotional_software_offer';
+        }
+
+        if ($hasPublicCustomerCtaContext) {
+            $score -= 10;
+            $signals[] = 'negative:public_customer_cta';
         }
 
         return [
@@ -387,6 +680,34 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
     {
         foreach ($signals as $signal) {
             if (is_string($signal) && str_starts_with($signal, 'intent:')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hasFatalNegativeSignal(array $signals): bool
+    {
+        $fatalSignals = [
+            'negative:software_vendor_context',
+            'negative:promotional_software_offer',
+            'negative:public_customer_cta',
+            'negative:disqualifying_context',
+            'negative:experience with',
+            'negative:is a plus',
+            'negative:job',
+            'negative:jobs',
+            'negative:career',
+            'negative:careers',
+            'negative:hiring',
+            'negative:login',
+            'negative:sign in',
+            'negative:marketplace listing',
+        ];
+
+        foreach ($signals as $signal) {
+            if (is_string($signal) && in_array($signal, $fatalSignals, true)) {
                 return true;
             }
         }

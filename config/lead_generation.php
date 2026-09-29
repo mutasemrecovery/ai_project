@@ -31,6 +31,9 @@ return [
         'facebook' => [
             'enabled' => (bool) env('LEADS_FACEBOOK_SOURCE_ENABLED', false),
         ],
+        'facebook_groups' => [
+            'enabled' => (bool) env('LEADS_FACEBOOK_GROUPS_SOURCE_ENABLED', env('LEADS_FACEBOOK_SOURCE_ENABLED', false)),
+        ],
         'twitter' => [
             'enabled' => (bool) env('LEADS_TWITTER_SOURCE_ENABLED', false),
         ],

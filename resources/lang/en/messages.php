@@ -153,6 +153,8 @@ return [
     'lg_website' => 'Website',
     'lg_email' => 'Email',
     'lg_phone' => 'Phone',
+    'lg_contact_methods' => 'Discovered Contact Methods',
+    'lg_link' => 'Link',
     'lg_location' => 'Location',
     'lg_source_url' => 'Source URL',
     'lg_description' => 'Description',

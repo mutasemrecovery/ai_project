@@ -40,6 +40,7 @@ class Lead extends Model
         'contact_role',
         'email',
         'phone',
+        'contact_methods',
         'website',
         'domain',
         'country',
@@ -70,6 +71,7 @@ class Lead extends Model
     protected $casts = [
         'detected_services' => 'array',
         'business_signals' => 'array',
+        'contact_methods' => 'array',
         'lead_score' => 'integer',
         'intent_score' => 'integer',
         'business_fit_score' => 'integer',

@@ -89,6 +89,8 @@ class LeadGenerationSeeder extends Seeder
             ['/groups/', '/posts/', '/photos/', '/videos/', '/events/', '/login', 'sharer.php']
         );
 
+        $this->facebookGroupSearchSource();
+
         $this->socialSearchSource(
             'X Twitter Public Search',
             'twitter',
@@ -127,6 +129,61 @@ class LeadGenerationSeeder extends Seeder
         );
     }
 
+    private function facebookGroupSearchSource(): void
+    {
+        LeadSource::updateOrCreate(
+            ['name' => 'Facebook Public Groups Search'],
+            [
+                'type' => 'search_api',
+                'provider' => 'facebook_groups',
+                'description' => 'Searches public Facebook group posts through your configured search API for explicit software, website, app, CRM, ERP, and automation requests. Use only APIs and data access that your account is allowed to use.',
+                'configuration' => [
+                    'platform' => 'facebook_groups',
+                    'source_reference' => 'facebook_groups',
+                    'site_filters' => ['site:facebook.com/groups'],
+                    'query_suffix' => '-jobs -careers -login -marketplace -events -photos -videos',
+                    'max_queries_per_run' => 18,
+                    'allows_group_requests' => true,
+                    'query_templates' => [
+                        '{location} "{keyword}"',
+                        '{location} "{service}"',
+                        '{location} "looking for developer"',
+                        '{location} "need website"',
+                        '{location} "need mobile app"',
+                        '{location} "need booking system"',
+                        '{location} "need CRM"',
+                        '{location} "need ERP"',
+                        '{location} "software company"',
+                        '{location} "محتاج موقع"',
+                        '{location} "محتاج تطبيق"',
+                        '{location} "محتاج نظام"',
+                        '{location} "بدي موقع"',
+                        '{location} "بدي تطبيق"',
+                        '{location} "بدنا نظام"',
+                        '{location} "مين بعمل موقع"',
+                        '{location} "مين يعمل تطبيق"',
+                        '{location} "شركة برمجة"',
+                        '{location} "نظام حجز"',
+                        '{location} "متجر الكتروني"',
+                    ],
+                    'company_name_suffixes' => ['| Facebook', '- Facebook', ' Facebook'],
+                    'allowed_url_contains' => ['facebook.com/groups/'],
+                    'blocked_url_contains' => ['/login', '/marketplace/', '/events/', '/photos/', '/videos/', 'sharer.php'],
+                    'min_quality_score' => 12,
+                    'requires_positive_intent' => true,
+                    'field_map' => [
+                        'source_url' => ['url', 'link'],
+                        'company_name' => ['company_name', 'name', 'title'],
+                        'description' => ['description', 'snippet', 'content'],
+                        'website' => ['website', 'company_website', 'official_website'],
+                        'location' => ['location', 'address'],
+                    ],
+                ],
+                'enabled' => (bool) config('lead_generation.sources.facebook_groups.enabled', config('lead_generation.sources.facebook.enabled', false)),
+            ]
+        );
+    }
+
     private function socialSearchSource(
         string $name,
         string $provider,
@@ -155,10 +212,12 @@ class LeadGenerationSeeder extends Seeder
                         '{industry} {location} "{service}"',
                         '{industry} {location} need system',
                         '{industry} {location} looking for software',
-                        '{industry} {location} book appointment',
-                        '{industry} {location} order online',
-                        '{industry} {location} WhatsApp ordering',
-                        '{industry} {location} new branch',
+                        '{industry} {location} booking via WhatsApp',
+                        '{industry} {location} manual booking',
+                        '{industry} {location} need booking system',
+                        '{industry} {location} need CRM',
+                        '{industry} {location} no website',
+                        '{industry} {location} looking for developer',
                         '{industry} {location} يحتاج نظام',
                         '{industry} {location} حجز موعد',
                         '{industry} {location} اطلب اونلاين',

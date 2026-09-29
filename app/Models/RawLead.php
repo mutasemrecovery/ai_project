@@ -26,6 +26,7 @@ class RawLead extends Model
         'website',
         'email',
         'phone',
+        'contact_methods',
         'location',
         'raw_data',
         'discovered_at',
@@ -36,6 +37,7 @@ class RawLead extends Model
 
     protected $casts = [
         'raw_data' => 'array',
+        'contact_methods' => 'array',
         'discovered_at' => 'datetime',
         'processed_at' => 'datetime',
     ];

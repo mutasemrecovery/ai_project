@@ -152,6 +152,8 @@ return [
     'lg_website' => 'الموقع الإلكتروني',
     'lg_email' => 'البريد الإلكتروني',
     'lg_phone' => 'الهاتف',
+    'lg_contact_methods' => 'وسائل التواصل المكتشفة',
+    'lg_link' => 'رابط',
     'lg_location' => 'الموقع',
     'lg_source_url' => 'رابط المصدر',
     'lg_description' => 'الوصف',

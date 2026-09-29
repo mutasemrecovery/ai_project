@@ -33,12 +33,14 @@ class LeadIntakeService
 
         if ($duplicate) {
             $lead = $this->duplicates->merge($duplicate, $attributes);
+            $this->syncContacts($lead, $attributes['contact_methods'] ?? []);
             $this->rawLeads->markDuplicate($rawLead, $lead);
 
             return $lead;
         }
 
         $lead = $this->leads->create($attributes);
+        $this->syncContacts($lead, $attributes['contact_methods'] ?? []);
         $this->rawLeads->markProcessed($rawLead, $lead);
 
         return $lead;
@@ -55,6 +57,7 @@ class LeadIntakeService
             'website' => $rawLead->website ?: Arr::get($rawData, 'website'),
             'email' => $rawLead->email ?: Arr::get($rawData, 'email'),
             'phone' => $rawLead->phone ?: Arr::get($rawData, 'phone'),
+            'contact_methods' => $rawLead->contact_methods ?: Arr::get($rawData, 'contact_methods', []),
             'country' => Arr::get($rawData, 'country'),
             'city' => Arr::get($rawData, 'city') ?: $rawLead->location,
             'industry' => Arr::get($rawData, 'industry'),
@@ -92,5 +95,40 @@ class LeadIntakeService
         }
 
         return $signals;
+    }
+
+    private function syncContacts(Lead $lead, array $contactMethods): void
+    {
+        foreach ($contactMethods as $method) {
+            if (! is_array($method)) {
+                continue;
+            }
+
+            $type = $method['type'] ?? null;
+            $value = $method['value'] ?? null;
+
+            if (! is_string($type) || ! is_string($value) || $value === '') {
+                continue;
+            }
+
+            $attributes = [
+                'source' => $method['source'] ?? 'discovery',
+                'confidence' => $method['confidence'] ?? null,
+            ];
+
+            if ($type === 'email') {
+                $lead->contacts()->firstOrCreate(['email' => mb_strtolower($value)], $attributes);
+                continue;
+            }
+
+            if (in_array($type, ['phone', 'whatsapp'], true)) {
+                $lead->contacts()->firstOrCreate(['phone' => $value], $attributes);
+                continue;
+            }
+
+            if ($type === 'linkedin') {
+                $lead->contacts()->firstOrCreate(['linkedin_url' => $value], $attributes);
+            }
+        }
     }
 }

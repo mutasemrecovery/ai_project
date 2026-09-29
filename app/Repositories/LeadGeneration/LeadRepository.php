@@ -103,7 +103,7 @@ class LeadRepository
                 continue;
             }
 
-            if (in_array($key, ['detected_services', 'business_signals'], true)) {
+            if (in_array($key, ['detected_services', 'business_signals', 'contact_methods'], true)) {
                 $lead->{$key} = $this->mergeArrays($lead->{$key}, $value);
                 continue;
             }
