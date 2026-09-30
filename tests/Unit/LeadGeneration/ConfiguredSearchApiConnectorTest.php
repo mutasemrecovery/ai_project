@@ -11,6 +11,21 @@ use ReflectionMethod;
 
 class ConfiguredSearchApiConnectorTest extends TestCase
 {
+    public function test_it_treats_empty_search_result_errors_as_no_results(): void
+    {
+        $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());
+
+        $this->assertTrue($this->invoke($connector, 'isEmptyResultsErrorMessage', [
+            "Google hasn't returned any results for this query.",
+        ]));
+        $this->assertTrue($this->invoke($connector, 'isEmptyResultsErrorMessage', [
+            'Your search did not match any documents.',
+        ]));
+        $this->assertFalse($this->invoke($connector, 'isEmptyResultsErrorMessage', [
+            'You have run out of searches.',
+        ]));
+    }
+
     public function test_it_rejects_job_like_social_search_snippets(): void
     {
         $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());

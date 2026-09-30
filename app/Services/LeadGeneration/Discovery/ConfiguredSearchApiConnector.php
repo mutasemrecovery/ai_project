@@ -81,6 +81,10 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             }
 
             if (isset($decoded['error'])) {
+                if ($this->isEmptyResultsErrorMessage((string) $decoded['error'])) {
+                    continue;
+                }
+
                 Log::warning('Lead discovery search returned an API error.', [
                     'source' => $source->name,
                     'provider' => $source->provider,
@@ -240,7 +244,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
 
         $decoded = json_decode((string) $response->getBody(), true);
 
-        if (is_array($decoded) && ! isset($decoded['error'])) {
+        if (is_array($decoded) && (! isset($decoded['error']) || $this->isEmptyResultsErrorMessage((string) $decoded['error']))) {
             Cache::put($cacheKey, $decoded, now()->addDays($this->queryCacheTtlDays($config)));
         }
 
@@ -414,6 +418,17 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             || str_contains($message, 'too many requests')
             || str_contains($message, 'quota')
             || str_contains($message, 'rate limit');
+    }
+
+    private function isEmptyResultsErrorMessage(string $message): bool
+    {
+        $message = mb_strtolower($message);
+
+        return str_contains($message, "hasn't returned any results")
+            || str_contains($message, 'has not returned any results')
+            || str_contains($message, 'no results')
+            || str_contains($message, 'zero results')
+            || str_contains($message, 'did not match any documents');
     }
 
     private function results(array $decoded, array $config): array
