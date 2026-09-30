@@ -24,4 +24,16 @@ class LeadDataNormalizerTest extends TestCase
         $this->assertSame('info@example.com', $data['email']);
         $this->assertSame('+962791234567', $data['phone']);
     }
+
+    public function test_it_unwraps_google_redirect_urls(): void
+    {
+        $normalizer = new LeadDataNormalizer();
+
+        $data = $normalizer->normalize([
+            'website' => 'https://www.google.com/url?sa=t&url=https%3A%2F%2Fexample.com%2Fcontact%3Fref%3Dsearch&ved=abc',
+        ]);
+
+        $this->assertSame('https://example.com/contact?ref=search', $data['website']);
+        $this->assertSame('example.com', $data['domain']);
+    }
 }

@@ -707,6 +707,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         }
 
         $url = trim($url, " \t\n\r\0\x0B.,;()[]{}<>\"'");
+        $url = $this->unwrapSearchRedirect($url);
 
         if (! preg_match('/^https?:\/\//i', $url)) {
             $url = 'https://' . $url;
@@ -739,6 +740,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
     private function contactTypeForUrl(string $url): string
     {
         $host = mb_strtolower((string) parse_url($url, PHP_URL_HOST));
+        $path = mb_strtolower((string) parse_url($url, PHP_URL_PATH));
 
         return match (true) {
             str_contains($host, 'linkedin.com') => 'linkedin',
@@ -746,8 +748,30 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             str_contains($host, 'instagram.com') => 'instagram',
             str_contains($host, 'x.com') || str_contains($host, 'twitter.com') => 'x',
             str_contains($host, 'wa.me') || str_contains($host, 'whatsapp.com') => 'whatsapp_link',
+            str_contains($host, 'google.') && str_starts_with($path, '/url') => 'search_artifact',
+            $host === 'serpapi.com' => 'search_artifact',
             default => $this->isShortLinkHost($host) ? 'short_link' : 'website',
         };
+    }
+
+    private function unwrapSearchRedirect(string $url): string
+    {
+        $parts = parse_url($url);
+        $host = mb_strtolower((string) ($parts['host'] ?? ''));
+
+        if ($host === '' || ! str_contains($host, 'google.')) {
+            return $url;
+        }
+
+        parse_str((string) ($parts['query'] ?? ''), $query);
+
+        foreach (['url', 'q'] as $key) {
+            if (! empty($query[$key]) && is_string($query[$key]) && preg_match('/^https?:\/\//i', $query[$key])) {
+                return $query[$key];
+            }
+        }
+
+        return $url;
     }
 
     private function uniqueContactMethods(array $methods): array

@@ -92,6 +92,8 @@ class LeadDataNormalizer
             return null;
         }
 
+        $value = $this->unwrapSearchRedirect($value);
+
         if (! preg_match('/^https?:\/\//i', $value)) {
             $value = 'https://' . $value;
         }
@@ -108,6 +110,26 @@ class LeadDataNormalizer
         $query = isset($parts['query']) ? '?' . $parts['query'] : '';
 
         return rtrim("{$scheme}://{$host}{$path}{$query}", '/');
+    }
+
+    private function unwrapSearchRedirect(string $value): string
+    {
+        $parts = parse_url($value);
+        $host = Str::lower((string) ($parts['host'] ?? ''));
+
+        if ($host === '' || ! str_contains($host, 'google.')) {
+            return $value;
+        }
+
+        parse_str((string) ($parts['query'] ?? ''), $query);
+
+        foreach (['url', 'q'] as $key) {
+            if (! empty($query[$key]) && is_string($query[$key]) && preg_match('/^https?:\/\//i', $query[$key])) {
+                return $query[$key];
+            }
+        }
+
+        return $value;
     }
 
     public function domain(?string $value): ?string

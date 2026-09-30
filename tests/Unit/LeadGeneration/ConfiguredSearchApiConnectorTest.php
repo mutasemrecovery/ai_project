@@ -166,6 +166,34 @@ class ConfiguredSearchApiConnectorTest extends TestCase
         $this->assertContains('website', array_column($mapped['contact_methods'], 'type'));
     }
 
+    public function test_it_does_not_use_search_artifacts_as_company_website(): void
+    {
+        $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());
+
+        $mapped = $this->invoke($connector, 'mapItem', [[
+            'url' => 'https://www.facebook.com/groups/ammanbusiness/permalink/123456789',
+            'title' => 'Need CRM',
+            'snippet' => 'Looking for a CRM implementation partner.',
+            'redirect_link' => 'https://www.google.com/url?sa=t&url=CAESgwEB6zswFROf2pJbNPolWZcZJ9Oh8-FTx_5SwEGRNZi2zp0hc9-8v-cuDvLk2QP5bVFQe9Zh4QPEjck7kXH84JB55yG7JNxRr3DrMMPojNlmHoIjalGh2qvIxeYlS6Yy1jhQr4cIFfIjaPCIkxjxqS-MyxR86xT8u3Lx_O1bTPEa-7DPPg&ved=abc',
+            'favicon' => 'https://serpapi.com/images/i/very-long-image.webp',
+        ], new LeadSource([
+            'name' => 'Facebook Public Groups Search',
+            'provider' => 'facebook_groups',
+        ]), new Campaign([
+            'name' => 'Retail Ecommerce Growth Buyers',
+            'countries' => ['Jordan'],
+            'cities' => ['Amman'],
+            'industries' => ['Retail'],
+        ]), 'site:facebook.com/groups Amman Jordan "need CRM"', [
+            'platform' => 'facebook_groups',
+            'source_reference' => 'facebook_groups',
+            'allows_group_requests' => true,
+        ]]);
+
+        $this->assertNull($mapped['website']);
+        $this->assertContains('search_artifact', array_column($mapped['contact_methods'], 'type'));
+    }
+
     public function test_it_accepts_explicit_facebook_group_software_requests(): void
     {
         $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());
