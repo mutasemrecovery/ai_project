@@ -59,20 +59,20 @@ class ConfiguredSearchApiConnectorTest extends TestCase
         $this->assertFalse($allowed);
     }
 
-    public function test_it_accepts_social_results_with_real_operational_intent(): void
+    public function test_it_accepts_social_results_with_real_operational_gap(): void
     {
         $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());
 
         $quality = $this->invoke($connector, 'qualitySignals', [
             'Sample Dental Clinic',
-            'Book appointment on WhatsApp. New branch now open in Amman.',
+            'We need booking system because appointment booking is still manual on WhatsApp.',
             'https://www.facebook.com/sampleclinic',
             'site:facebook.com Dental Clinic Amman Jordan book appointment -jobs -careers -login',
             ['country' => 'Jordan', 'city' => 'Amman', 'industry' => 'Dental Clinic'],
         ]);
 
         $this->assertGreaterThanOrEqual(10, $quality['score']);
-        $this->assertContains('intent:book appointment', $quality['signals']);
+        $this->assertContains('intent:software_request', $quality['signals']);
 
         $allowed = $this->invoke($connector, 'allowedResult', [[
             'source_url' => 'https://www.facebook.com/sampleclinic',
@@ -88,6 +88,36 @@ class ConfiguredSearchApiConnectorTest extends TestCase
         ]]);
 
         $this->assertTrue($allowed);
+    }
+
+    public function test_it_rejects_public_booking_without_an_operational_gap(): void
+    {
+        $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());
+
+        $quality = $this->invoke($connector, 'qualitySignals', [
+            'Sample Dental Clinic',
+            'Book appointment on WhatsApp. New branch now open in Amman.',
+            'https://www.facebook.com/sampleclinic',
+            'site:facebook.com Dental Clinic Amman Jordan book appointment -jobs -careers -login',
+            ['country' => 'Jordan', 'city' => 'Amman', 'industry' => 'Dental Clinic'],
+        ]);
+
+        $this->assertContains('negative:public_customer_cta', $quality['signals']);
+
+        $allowed = $this->invoke($connector, 'allowedResult', [[
+            'source_url' => 'https://www.facebook.com/sampleclinic',
+            'company_name' => 'Sample Dental Clinic',
+            'raw_data' => [
+                'candidate_quality_score' => $quality['score'],
+                'candidate_quality_signals' => $quality['signals'],
+            ],
+        ], [
+            'allowed_url_contains' => ['facebook.com/'],
+            'min_quality_score' => 10,
+            'requires_positive_intent' => true,
+        ]]);
+
+        $this->assertFalse($allowed);
     }
 
     public function test_it_rejects_promotional_crm_offers_as_buyer_leads(): void
@@ -207,6 +237,49 @@ class ConfiguredSearchApiConnectorTest extends TestCase
 
         $this->assertNull($mapped['website']);
         $this->assertContains('search_artifact', array_column($mapped['contact_methods'], 'type'));
+    }
+
+    public function test_it_rejects_about_this_result_urls_as_company_websites(): void
+    {
+        $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());
+
+        $mapped = $this->invoke($connector, 'mapItem', [[
+            'url' => 'https://www.facebook.com/groups/ammanbusiness/permalink/123456789',
+            'title' => 'Need CRM',
+            'snippet' => 'Looking for a CRM implementation partner.',
+            'website' => 'https://www.google.com/search/about-this-result?origin=www.google.com&req=abc',
+        ], new LeadSource([
+            'name' => 'Facebook Public Groups Search',
+            'provider' => 'facebook_groups',
+        ]), new Campaign([
+            'name' => 'Retail Ecommerce Growth Buyers',
+            'countries' => ['Jordan'],
+            'cities' => ['Amman'],
+            'industries' => ['Retail'],
+        ]), 'site:facebook.com/groups Amman Jordan "need CRM"', [
+            'platform' => 'facebook_groups',
+            'source_reference' => 'facebook_groups',
+            'allows_group_requests' => true,
+        ]]);
+
+        $this->assertNull($mapped['website']);
+        $this->assertContains('search_artifact', array_column($mapped['contact_methods'], 'type'));
+    }
+
+    public function test_it_rejects_vendor_posts_that_ask_who_needs_a_website(): void
+    {
+        $connector = new ConfiguredSearchApiConnector(new SearchQueryBuilder());
+
+        $quality = $this->invoke($connector, 'qualitySignals', [
+            'The Funstruction Zone',
+            'Anyone need website for their business? Build your online presence today.',
+            'https://www.facebook.com/groups/ammanbusiness/permalink/123456789',
+            'site:facebook.com/groups Amman Jordan "need website"',
+            ['country' => 'Jordan', 'city' => 'Amman', 'industry' => 'Retail'],
+        ]);
+
+        $this->assertContains('negative:promotional_software_offer', $quality['signals']);
+        $this->assertNotContains('intent:software_request', $quality['signals']);
     }
 
     public function test_it_accepts_explicit_facebook_group_software_requests(): void

@@ -467,7 +467,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             $companyName = 'Facebook Group Request';
         }
 
-        $website = $this->value($item, $map['website'] ?? ['website', 'company_website', 'official_website']);
+        $website = $this->publicWebsite($this->value($item, $map['website'] ?? ['website', 'company_website', 'official_website']));
         $email = $this->value($item, $map['email'] ?? ['email']);
         $phone = $this->value($item, $map['phone'] ?? ['phone', 'telephone']);
         $contactMethods = $this->contactMethods($item, $sourceUrl, $website, $email, $phone);
@@ -596,8 +596,8 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             $methods[] = $this->contactMethod('phone', $value, 'search_text', 0.75);
         }
 
-        if ($website) {
-            $methods[] = $this->contactMethod('website', $this->normalizeUrl($website), 'search_field', 0.85);
+        if ($website = $this->publicWebsite($website)) {
+            $methods[] = $this->contactMethod('website', $website, 'search_field', 0.85);
         }
 
         foreach ($this->extractUrls($text) as $url) {
@@ -731,6 +731,17 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         return filter_var($url, FILTER_VALIDATE_URL) ? rtrim($url, '/') : null;
     }
 
+    private function publicWebsite(?string $url): ?string
+    {
+        $url = $this->normalizeUrl($url);
+
+        if (! $url || $this->contactTypeForUrl($url) !== 'website') {
+            return null;
+        }
+
+        return $url;
+    }
+
     private function normalizePhone(?string $phone): ?string
     {
         if (! is_string($phone) || trim($phone) === '') {
@@ -763,7 +774,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             str_contains($host, 'instagram.com') => 'instagram',
             str_contains($host, 'x.com') || str_contains($host, 'twitter.com') => 'x',
             str_contains($host, 'wa.me') || str_contains($host, 'whatsapp.com') => 'whatsapp_link',
-            str_contains($host, 'google.') && str_starts_with($path, '/url') => 'search_artifact',
+            str_contains($host, 'google.') && (str_starts_with($path, '/url') || str_starts_with($path, '/search/about-this-result')) => 'search_artifact',
             $host === 'serpapi.com' => 'search_artifact',
             default => $this->isShortLinkHost($host) ? 'short_link' : 'website',
         };
@@ -846,8 +857,8 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         $queryText = mb_strtolower($query);
         $contextText = trim($resultText . ' ' . $queryText);
         $hasDisqualifyingContext = preg_match('/\b(experience with|is a plus|job|jobs|career|careers|hiring|salary|responsibilities|qualifications|login|sign in)\b|وظيفة|وظائف|توظيف|راتب|دوام|خبرة|للعمل|شاغر/u', $resultText) === 1;
-        $hasPromotionalSoftwareContext = preg_match('/\b(want to|start today|try our|our crm|with a crm system|crm system, everything|manage your business effortlessly|boost your business|grow your business with|marketingagency|marketing agency|website design|software for your business)\b/i', $resultText) === 1;
-        $hasPublicCustomerCtaContext = preg_match('/\b(book now|bookings? essential|bookings? via|via our website|tickets?|event|show|performance|register now|registration open|order online|delivery available|membership offer|rooms available|packages|offers?)\b/i', $resultText) === 1;
+        $hasPromotionalSoftwareContext = preg_match('/\b(want to|start today|try our|our crm|with a crm system|crm system, everything|manage your business effortlessly|boost your business|grow your business with|marketingagency|marketing agency|website design|web design|software for your business|build your online|your vision\. our design|anyone need website|need website for their business|seo services|it solutions|erp solutions provider|crm solutions provider|official distributor)\b/i', $resultText) === 1;
+        $hasPublicCustomerCtaContext = preg_match('/\b(book now|book appointment|bookings? essential|bookings? via|via our website|tickets?|event|show|performance|register now|registration open|order online|delivery available|membership offer|rooms available|packages|offers?)\b/i', $resultText) === 1;
         $hasExplicitSoftwareRequest = ! $hasDisqualifyingContext
             && ! $hasPromotionalSoftwareContext
             && preg_match('/\b(looking for|need|needs|needed|who can build|quote|quotation|proposal|developer|programmer|software company|web developer|app developer|website|mobile app|web app|booking system|crm|erp|inventory system)\b|محتاج|محتاجة|محتاجين|احتاج|أحتاج|بدي|بدنا|نحتاج|مين\s+(?:بعمل|بيعمل|يعمل)|شركة\s+برمجة|مبرمج|مطور|تصميم\s+موقع|تطبيق|متجر\s+(?:الكتروني|إلكتروني)|نظام\s+(?:حجز|مخزون|محاسبة|ادارة|إدارة)/iu', $resultText) === 1;
@@ -907,7 +918,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         }
 
         foreach (['crm', 'erp', 'automation', 'inventory', 'fleet'] as $keyword) {
-            if (! $hasDisqualifyingContext && ! $hasPromotionalSoftwareContext && str_contains($resultText, $keyword) && preg_match('/\b(need|needs|looking for|request|requires?|manual|manage|tracking|operations?|sales|customers?)\b|يحتاج|نحتاج|نبحث عن|مطلوب نظام|إدارة|ادارة|عملاء|مبيعات|مخزون|تتبع|عمليات/u', $resultText)) {
+            if (! $hasDisqualifyingContext && ! $hasPromotionalSoftwareContext && ! $hasPublicCustomerCtaContext && str_contains($resultText, $keyword) && preg_match('/\b(need|needs|looking for|request|requires?|manual|broken|missing|pain|problem|struggling|replace|integrate|tracking|operations?)\b|يحتاج|نحتاج|نبحث عن|مطلوب نظام|يدوي|مشكلة|نظام مفقود|تتبع|عمليات/u', $resultText)) {
                 $score += 2;
                 $signals[] = 'intent:' . $keyword;
             }
