@@ -977,7 +977,7 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         }
 
         if ($hasPublicCustomerCtaContext) {
-            $score -= 10;
+            $score -= 3;
             $signals[] = 'negative:public_customer_cta';
         }
 
@@ -995,11 +995,11 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
             return true;
         }
 
-        if (preg_match('/[.!?]{1}|,|:|;|\b(experience with|is a plus|from crm|job|hiring|login|sign in)\b/i', $companyName)) {
+        if (preg_match('/[!?]|:\s+\S|;\s*\S|\b(experience with|is a plus|from crm|job|hiring|login|sign in)\b/i', $companyName)) {
             return true;
         }
 
-        return str_word_count($companyName) > 12;
+        return str_word_count($companyName) > 10;
     }
 
     private function hasPositiveIntentSignal(array $signals): bool
@@ -1018,7 +1018,6 @@ class ConfiguredSearchApiConnector implements LeadSourceConnectorInterface
         $fatalSignals = [
             'negative:software_vendor_context',
             'negative:promotional_software_offer',
-            'negative:public_customer_cta',
             'negative:disqualifying_context',
             'negative:experience with',
             'negative:is a plus',

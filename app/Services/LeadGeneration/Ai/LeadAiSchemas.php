@@ -24,7 +24,7 @@ class LeadAiSchemas
             'properties' => [
                 'is_potential_client' => ['type' => 'boolean'],
                 'confidence' => ['type' => 'number'],
-                'industry' => ['type' => ['string', 'null']],
+                'industry' => ['anyOf' => [['type' => 'string'], ['type' => 'null']]],
                 'detected_needs' => [
                     'type' => 'array',
                     'items' => ['type' => 'string'],
@@ -46,7 +46,7 @@ class LeadAiSchemas
                         ],
                     ],
                 ],
-                'project_type' => ['type' => ['string', 'null']],
+                'project_type' => ['anyOf' => [['type' => 'string'], ['type' => 'null']]],
                 'estimated_project_size' => [
                     'type' => 'string',
                     'enum' => ['small', 'medium', 'large', 'unknown'],
@@ -67,7 +67,7 @@ class LeadAiSchemas
             'additionalProperties' => false,
             'required' => ['subject', 'body', 'channel', 'message_type', 'evidence_used'],
             'properties' => [
-                'subject' => ['type' => ['string', 'null']],
+                'subject' => ['anyOf' => [['type' => 'string'], ['type' => 'null']]],
                 'body' => ['type' => 'string'],
                 'channel' => [
                     'type' => 'string',
